@@ -1,6 +1,7 @@
 {
     "files.associations": {
         "algorithm": "c",
-        "__node_handle": "cpp"
+        "__node_handle": "cpp",
+        "tuplesort.h": "c"
     }
 }

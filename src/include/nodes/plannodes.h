@@ -591,6 +591,20 @@ typedef struct Sort
 	bool	   *nullsFirst;		/* NULLS FIRST/LAST directions */
 } Sort;
 
+/* ----------------
+ *		sort node
+ * ----------------
+ */
+typedef struct ShuffleSort
+{
+	Plan		plan;
+	int			numCols;		/* number of sort-key columns */
+	AttrNumber *shuffleSortColIdx;		/* their indexes in the target list */
+	Oid		   *shuffleSortOperators;	/* OIDs of operators to sort them by */
+	Oid		   *collations;		/* OIDs of collations */
+	bool	   *nullsFirst;		/* NULLS FIRST/LAST directions */
+} ShuffleSort;
+
 /* ---------------
  *	 group node -
  *		Used for queries with GROUP BY (but no aggregates) specified.

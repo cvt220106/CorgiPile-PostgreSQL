@@ -104,6 +104,7 @@
 #include "executor/nodeShufflescan.h"
 #include "executor/nodeSetOp.h"
 #include "executor/nodeSort.h"
+#include "executor/nodeShuffleSort.h"
 #include "executor/nodeSubplan.h"
 #include "executor/nodeSubqueryscan.h"
 #include "executor/nodeTidscan.h"
@@ -275,6 +276,11 @@ ExecInitNode(Plan *node, EState *estate, int eflags)
 		case T_Material:
 			result = (PlanState *) ExecInitMaterial((Material *) node,
 													estate, eflags);
+			break;
+
+		case T_ShuffleSort:
+			result = (PlanState *) ExecInitShuffleSort((ShuffleSort *) node,
+												estate, eflags);
 			break;
 
 		case T_Sort:
@@ -473,6 +479,10 @@ ExecProcNode(PlanState *node)
 			 */
 		case T_MaterialState:
 			result = ExecMaterial((MaterialState *) node);
+			break;
+
+		case T_ShuffleSortState:
+			result = ExecShuffleSort((ShuffleSortState *) node);
 			break;
 
 		case T_SortState:

@@ -592,7 +592,7 @@ typedef struct Sort
 } Sort;
 
 /* ----------------
- *		sort node
+ *		Shuffle sort node
  * ----------------
  */
 typedef struct ShuffleSort

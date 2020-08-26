@@ -49,7 +49,7 @@ void clear_buffer(TupleShuffleSortState* tupleShuffleSortState)
 /* ----------------------------------------------------------------
  *		ExecSort
  *
- *		Sorts tuples from the outer subtree of the node using tuplesort,
+ *		Sorts tuples from the outer subtree of the node using tupleshufflesort,
  *		which saves the results in a temporary file or memory. After the
  *		initial call, returns a tuple from the file with each call.
  *
@@ -115,8 +115,7 @@ ExecShuffleSort(ShuffleSortState *node)
 											  plannode->nullsFirst,
 											  work_mem,
 											  node->randomAccess);
-		if (node->bounded)
-			tupleshufflesort_set_bound(tupleShuffleSortState, node->bound);
+                                              
 		node->tupleShuffleSortState = (void *) tupleShuffleSortState;
 
 

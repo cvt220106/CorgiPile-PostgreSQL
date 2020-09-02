@@ -253,6 +253,13 @@ typedef struct BitmapOr
 	List	   *bitmapplans;
 } BitmapOr;
 
+
+typedef struct SGD
+{
+	Plan		plan;
+	
+} SGD;
+
 /*
  * ==========
  * Scan nodes

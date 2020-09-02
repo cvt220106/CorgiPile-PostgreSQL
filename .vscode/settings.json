@@ -4,6 +4,8 @@
         "__node_handle": "cpp",
         "tuplesort.h": "c",
         "__tuple": "c",
-        "tuple": "c"
+        "tuple": "c",
+        "locale": "c",
+        "string": "c"
     }
 }

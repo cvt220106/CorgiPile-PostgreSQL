@@ -65,11 +65,7 @@ typedef struct {
  * actually sorted by their hash codes not the raw data.
  */
 
-extern TupleShuffleSortState *tupleshufflesort_begin_heap(TupleDesc tupDesc,
-					 int nkeys, AttrNumber *attNums,
-					 Oid *shuffleSortOperators, Oid *shuffleSortCollations,
-					 bool *nullsFirstFlags,
-					 int workMem, bool randomAccess);
+extern TupleShuffleSortState *tupleshufflesort_begin_heap(TupleDesc tupDesc, int workMem);
 extern TupleShuffleSortState *tupleshufflesort_begin_cluster(TupleDesc tupDesc,
 						Relation indexRel,
 						int workMem, bool randomAccess);

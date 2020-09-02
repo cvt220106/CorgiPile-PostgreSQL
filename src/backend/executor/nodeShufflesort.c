@@ -96,7 +96,7 @@ ExecShuffleSort(ShuffleSortState *node)
 		 * Want to scan subplan in the forward direction while creating the
 		 * sorted data.
 		 */
-		estate->es_direction = ForwardScanDirection;
+		estate->es_direction = ShuffleScanDirection;
 
 		/*
 		 * Initialize tuplesort module.
@@ -104,17 +104,11 @@ ExecShuffleSort(ShuffleSortState *node)
 		SO1_printf("ExecShuffleSort: %s\n",
 				   "calling tupleshufflesort_begin");
 
+		// outerNode = ShuffleScanNode
 		outerNode = outerPlanState(node);
 		tupDesc = ExecGetResultType(outerNode);
 
-		tupleShuffleSortState = tupleshufflesort_begin_heap(tupDesc,
-											  plannode->numCols,
-											  plannode->shuffleSortColIdx,
-											  plannode->shuffleSortOperators,
-											  plannode->collations,
-											  plannode->nullsFirst,
-											  work_mem,
-											  node->randomAccess);
+		tupleShuffleSortState = tupleshufflesort_begin_heap(tupDesc, work_mem);
                                               
 		node->tupleShuffleSortState = (void *) tupleShuffleSortState;
 
@@ -122,6 +116,8 @@ ExecShuffleSort(ShuffleSortState *node)
 		// Lijie: add begin 
 		// =================== Model initialization =========================
 		// We may put init_model() to ExecInitSort
+
+		/*
 		Model svm;
 		Model* svm_model = &svm;
 		init_model(svm_model);
@@ -129,15 +125,13 @@ ExecShuffleSort(ShuffleSortState *node)
 		// =================== Model initialization =========================
 		// Lijie: add end
 
-		/*
-		 * Scan the subplan and feed all the tuples to tuplesort.
-		 */
+		
 
 		// Lijie: add begin
 		int batch_size = 5;
 		int ith_tuple = 0;
 		elog(LOG, "[SVM] Batch size = 5");
-
+		*/
 		for (;;)
 		{
 			// Lijie: read a tuple from the previous node (e.g., SeqScan)

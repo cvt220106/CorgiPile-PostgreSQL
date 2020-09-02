@@ -120,6 +120,7 @@ typedef enum NodeTag
 	T_NestLoopState,
 	T_MergeJoinState,
 	T_HashJoinState,
+	T_SGDState,
 	T_MaterialState,
 	T_SortState,
 	// Lijie: add begin

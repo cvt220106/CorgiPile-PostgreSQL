@@ -105,6 +105,7 @@
 #include "executor/nodeSetOp.h"
 #include "executor/nodeSort.h"
 #include "executor/nodeShuffleSort.h"
+#include "executor/nodeSGD.h"
 #include "executor/nodeSubplan.h"
 #include "executor/nodeSubqueryscan.h"
 #include "executor/nodeTidscan.h"
@@ -474,6 +475,9 @@ ExecProcNode(PlanState *node)
 			result = ExecHashJoin((HashJoinState *) node);
 			break;
 
+		case T_SGDState:
+			result = ExecSGD((SGDState *) node);
+			break;
 			/*
 			 * materialization nodes
 			 */

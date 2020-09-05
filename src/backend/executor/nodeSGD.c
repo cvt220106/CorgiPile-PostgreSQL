@@ -1,195 +1,115 @@
 
-// Lijie: add begin
-void init_model(Model* model) {
-	model->loss = 0;
-	model->p1 = 0;
-	model->p2 = 0;
-}
-
-double
-compute_loss(ShuffleSortTuple* p, Model* model)
-{
-	double loss = (double) p->datum1;
-	return loss;
-}
-
-
-int
-compute_loss_and_update_model(TupleShuffleSortState* state, Model* model,
-							  int ith_tuple, int batch_size, bool last_tuple) 
-{
-	int n = state->memtupcount;
-	ShuffleSortTuple* tuples = state->memtuples;
-	int last_updated = 0;
-	int i = 0;
-
-	for (ShuffleSortTuple* p = tuples; p < tuples + n; p++) {
-		double tuple_loss = compute_loss(p, model);
-		model->loss = model->loss + tuple_loss;
-		elog(LOG, "[SVM][Tuple %d] >>> Add %.2f loss to model.", ith_tuple, tuple_loss);
-		ith_tuple = (ith_tuple + 1) % batch_size;
-		
-		// going to update model
-		if (ith_tuple == 0) {
-			// update model
-			model->p1 += 1;
-			model->p2 += 1;
-			elog(LOG, "[SVM] >>> Update model (p1 = %d, p2 = %d, loss = %.2f).", model->p1, model->p2, model->loss);
-			last_updated = i;
-		}
-		++i;
-
-	}
-
-	if (last_tuple) {
-		if (n > 0 && last_updated < n - 1) {
-			model->p1 += 1;
-			model->p2 += 1;
-			elog(LOG, "[SVM] >>> Last: Update model (p1 = %d, p2 = %d, loss = %.2f).", model->p1, model->p2, model->loss);
-		}
-		else {
-			elog(LOG, "[SVM] >>> Has updated the model.");
-		}
-	}
-
-	return ith_tuple;
-}
-
-// Lijie: add begin 
-		// =================== Model initialization =========================
-		// We may put init_model() to ExecInitSort
-		Model svm;
-		Model* svm_model = &svm;
-		init_model(svm_model);
-		elog(LOG, "[SVM] Initialize SVM model (loss = 0, p1 = 0, p2 = 0)");
-
-
 #include "postgres.h"
 
 #include "executor/execdebug.h"
 #include "executor/nodeSGD.h"
 //#include "utils/rel.h"
 
-static void InitScanRelation(SeqScanState *node, EState *estate);
-static TupleTableSlot *SeqNext(SeqScanState *node);
+/* transfering TupleTableSlot to SGDTuple */
 
-/* ----------------------------------------------------------------
- *						Scan Support
- * ----------------------------------------------------------------
- */
+// typedef struct
+// {
+// 	void	    *tuple;			/* the tuple proper */
+// 	Datum		feature_x1;			/* value of first key column */
+//     Datum		feature_x2;			
+//     Datum		feature_x3;			
+//     Datum		feature_x4;			
+//     Datum		label_y;			
+// 	// bool		isnull1;		/* is first key column NULL? */
+// 	int			tupindex;		/* see notes above */
+// } SGDTuple;
 
-/* ----------------------------------------------------------------
- *		SeqNext
- *
- *		This is a workhorse for ExecSeqScan
- * ----------------------------------------------------------------
- */
-static TupleTableSlot *
-SeqNext(SeqScanState *node)
+
+typedef struct SGDBatchState
 {
-	HeapTuple	tuple;
-	HeapScanDesc scandesc;
-	EState	   *estate;
-	ScanDirection direction;
-	TupleTableSlot *slot;
+	double*		gradients;	  /* sum the gradient of each tuple in a batch */		
+    double		loss;	  /* sum the loss of each tuple in a batch */		
+} SGDBatchState;
 
-	/*
-	 * get information from the estate and scan state
-	 */
-	scandesc = node->ss_currentScanDesc;
-	estate = node->ps.state;
-	direction = estate->es_direction;
-	slot = node->ss_ScanTupleSlot;
 
-	/*
-	 * get the next tuple from the table
-	 */
-	tuple = heap_getnext(scandesc, direction);
+typedef struct SGDTuple
+{
+	double*		features;		/* features of a tuple */	
+    double		label;			/* the label of a tuple */
+	int			tupindex;		/* see notes above */
+} SGDTuple;
 
-	/*
-	 * save the tuple and the buffer returned to us by the access methods in
-	 * our scan tuple slot and return the slot.  Note: we pass 'false' because
-	 * tuples returned by heap_getnext() are pointers onto disk pages and were
-	 * not created with palloc() and so should not be pfree()'d.  Note also
-	 * that ExecStoreTuple will increment the refcount of the buffer; the
-	 * refcount will not be dropped until the tuple table slot is cleared.
-	 */
-	if (tuple)
-		ExecStoreTuple(tuple,	/* tuple to store */
-					   slot,	/* slot to store in */
-					   scandesc->rs_cbuf,		/* buffer associated with this
-												 * tuple */
-					   false);	/* don't pfree this pointer */
-	else
-		ExecClearTuple(slot);
 
-	return slot;
+Model* init_model(int n_features) {
+    Model* model = (Model *) palloc0(sizeof(Model));
+
+	model->total_loss = 0;
+    model->batch_size = 10;
+    model->learning_rate = 0.1;
+    model->n_features = n_features;
+
+    
+	model->w = (double *) palloc0(sizeof(double) * n_features);
+
+    for (int i = 0; i < n_features; i++) {
+        // model->gradient[i] = 0;
+        model->w[i] = 0;
+    }
+
+    return model;
 }
 
-/*
- * SeqRecheck -- access method routine to recheck a tuple in EvalPlanQual
- */
-static bool
-SeqRecheck(SeqScanState *node, TupleTableSlot *slot)
+void ExecClearModel(Model* model) {
+    // free(model->gradient);
+	pfree(model->w);
+    pfree(model);
+}
+
+SGDBatchState* init_SGDBatchState(int n_features) {
+    SGDBatchState* batchstate = (SGDBatchState *) palloc0(sizeof(SGDBatchState));
+    batchstate->gradients = (double *) palloc0(sizeof(double) * n_features);
+    batchstate->loss = 0;
+    return batchstate;
+}
+
+void free_SGDBatchState(SGDBatchState* batchstate) {
+    pfree(batchstate->gradients);
+    pfree(batchstate);
+}
+
+void
+compute_tuple_gradient_loss(SGDTuple* tp, Model* model, SGDBatchState* batchstate)
 {
-	/*
-	 * Note that unlike IndexScan, SeqScan never use keys in heap_beginscan
-	 * (and this is very bad) - so, here we do not check are keys ok or not.
-	 */
-	return true;
+    double y = tp->label;
+    double* x = tp->features;
+
+    int n = model->n_features;
+
+    double loss = 0;
+    double grad[n];
+
+    // compute gradients of the incoming tuple
+    double wx = 0;
+    for (int i = 0; i < n; i++)
+        wx = wx + model->w[i] * x[i];
+    double ywx = y * wx;
+    if (ywx < 1) {
+        for (int i = 0; i < n; i++)
+            grad[i] = -y * x[i];
+    }
+    else {
+        for (int i = 0; i < n; i++) 
+            grad[i] = 0;
+    }
+
+    // Add this tuple's gradient to the previous gradients in this batch
+    for (int i = 0; i < n; i++) 
+        batchstate->gradients[i] += grad[i];
+
+    // compute the loss of the incoming tuple
+    double tuple_loss = 1 - ywx;
+    if (tuple_loss < 0)
+        tuple_loss = 0;
+    batchstate->loss += tuple_loss;
 }
 
 /* ----------------------------------------------------------------
- *		ExecSeqScan(node)
- *
- *		Scans the relation sequentially and returns the next qualifying
- *		tuple.
- *		We call the ExecScan() routine and pass it the appropriate
- *		access method functions.
- * ----------------------------------------------------------------
- */
-TupleTableSlot *
-ExecSGD(SGDState *node)
-{
-	return ExecSGD((ScanState *) node,
-					(ExecScanAccessMtd) SeqNext,
-					(ExecScanRecheckMtd) SeqRecheck);
-}
-
-/* ----------------------------------------------------------------
- *		InitScanRelation
- *
- *		This does the initialization for scan relations and
- *		subplans of scans.
- * ----------------------------------------------------------------
- */
-static void
-InitScanRelation(SeqScanState *node, EState *estate)
-{
-	Relation	currentRelation;
-	HeapScanDesc currentScanDesc;
-
-	/*
-	 * get the relation object id from the relid'th entry in the range table,
-	 * open that relation and acquire appropriate lock on it.
-	 */
-	currentRelation = ExecOpenScanRelation(estate,
-									 ((SeqScan *) node->ps.plan)->scanrelid);
-
-	currentScanDesc = heap_beginscan(currentRelation,
-									 estate->es_snapshot,
-									 0,
-									 NULL);
-
-	node->ss_currentRelation = currentRelation;
-	node->ss_currentScanDesc = currentScanDesc;
-
-	ExecAssignScanType(node, RelationGetDescr(currentRelation));
-}
-
-
-/* ----------------------------------------------------------------
- *		ExecInitSeqScan
+ *		ExecInitSGD
  * ----------------------------------------------------------------
  */
 SGDState *
@@ -206,31 +126,21 @@ ExecInitSGD(SGD *node, EState *estate, int eflags)
 	sgdstate = makeNode(SGDState);
 	sgdstate->ps.plan = (Plan *) node;
 	sgdstate->ps.state = estate;
+    sgdstate->sgd_done = false;
 
-	/*
-	 * We must have random access to the sort output to do backward scan or
-	 * mark/restore.  We also prefer to materialize the sort output if we
-	 * might be called on to rewind and replay it many times.
-	 */
+    int n_features = 4;
+    // TODO: using malloc to allocate model later
+    sgdstate->model = init_model(n_features);
 	
-	// sortstate->bounded = false;
-	// sortstate->sort_Done = false;
-	// sortstate->tuplesortstate = NULL;
-
-	/*
-	 * Miscellaneous initialization
-	 *
-	 * Sort nodes don't initialize their ExprContexts because they never call
-	 * ExecQual or ExecProject.
-	 */
+	elog(LOG, "[SVM] Initialize SVM model");
+    // elog(LOG, "[SVM] loss = 0, p1 = 0, p2 = 0, gradient = 0, batch_size = 10, learning_rate = 0.1");
 
 	/*
 	 * tuple table initialization
 	 *
 	 * sort nodes only return scan tuples from their sorted relation.
 	 */
-	ExecInitResultTupleSlot(estate, &sortstate->ss.ps);
-	// ExecInitScanTupleSlot(estate, &sortstate->ss);
+	ExecInitResultTupleSlot(estate, &sgdstate->ps);
 
 	/*
 	 * initialize child nodes
@@ -246,14 +156,152 @@ ExecInitSGD(SGD *node, EState *estate, int eflags)
 	 * initialize tuple type.  no need to initialize projection info because
 	 * this node doesn't do projections.
 	 */
-	ExecAssignResultTypeFromTL(&sortstate->ss.ps);
-	ExecAssignScanTypeFromOuterPlan(&sortstate->ss);
+	ExecAssignResultTypeFromTL(&sgdstate->ps);
+	// ExecAssignScanTypeFromOuterPlan(&sortstate->ss);
 	// sortstate->ss.ps.ps_ProjInfo = NULL;
 
-	SO1_printf("ExecInitSort: %s\n",
-			   "sort node initialized");
+	SO1_printf("ExecInitSGD: %s\n",
+			   "SGD node initialized");
 
-	return sortstate;
+	return sgdstate;
+}
+
+void update_model(Model* model, SGDBatchState* batchstate) {
+
+    // add graidents to the model and clear the batch gradients
+    for (int i = 0; i < model->n_features; i++) {
+        model->w[i] = model->w[i] + model->learning_rate * batchstate->gradients[i];
+        batchstate->gradients[i] = 0;
+    }
+
+    model->total_loss = model->total_loss + batchstate->loss;
+    batchstate->loss = 0;
+}
+
+
+void perform_SGD(Model *model, TupleTableSlot *slot, SGDBatchState* batchstate, int i) {
+    if (slot == NULL) /* slot == NULL means the end of the table. */
+        update_model(model, batchstate);
+    else {
+        // add the batch's gradients to the model, and reset the batch's gradients.
+        compute_tuple_gradient_loss(model, slot, batchstate);
+        if (i == model->batch_size - 1) 
+            update_model(model, batchstate);
+        
+    }   
+}
+
+TupleTableSlot *
+ExecSGD(SGDState *node, Model* model)
+{
+	EState	   *estate;
+	TupleTableSlot *slot;
+
+	/*
+	 * get state info from node
+	 */
+	SO1_printf("ExecSGD: %s\n",
+			   "entering routine");
+
+	estate = node->ps.state;
+	
+	// tupleSGDState = (TupleSGDState *) node->tupleSGDState;
+    SGDBatchState* batchstate = init_SGDBatchState(model->n_features);
+	/*
+	 * If first time through, read all tuples from outer plan and pass them to
+	 * tuplesort.c. Subsequent calls just fetch tuples from tuplesort.
+	 */
+
+	if (!node->sgd_done)
+	{
+		// ShuffleSort	   *plannode = (ShuffleSort *) node->ss.ps.plan;
+		PlanState  *outerNode;
+		TupleDesc	tupDesc;
+
+		SO1_printf("ExecSGD: %s\n",
+				   "SGD subplan");
+
+		/*
+		 * Want to scan subplan in the forward direction while creating the
+		 * sorted data.
+		 */
+		estate->es_direction = ForwardScanDirection;
+
+		/*
+		 * Initialize tuplesort module.
+		 */
+		// SO1_printf("ExecSGD: %s\n",
+		// 		   "calling tupleshufflesort_begin");
+
+		// outerNode = ShuffleScanNode
+		outerNode = outerPlanState(node);
+		tupDesc = ExecGetResultType(outerNode);
+                                              
+		// node->tupleShuffleSortState = (void *) tupleShuffleSortState;
+
+
+		// Lijie: add begin 
+		// =================== Model initialization =========================
+		// We may put init_model() to ExecInitSort
+
+		/*
+		Model svm;
+		Model* svm_model = &svm;
+		init_model(svm_model);
+		elog(LOG, "[SVM] Initialize SVM model (loss = 0, p1 = 0, p2 = 0)");
+		// =================== Model initialization =========================
+		// Lijie: add end
+
+		// Lijie: add begin
+		int batch_size = 5;
+		int ith_tuple = 0;
+		elog(LOG, "[SVM] Batch size = 5");
+		*/
+        int ith_tuple = 0;
+
+		for (;;)
+		{
+			// Lijie: read a tuple from the previous node (e.g., ShuffleSort)
+			slot = ExecProcNode(outerNode);
+
+			// Lijie: we finalize the model when finishing reading all the tuples
+			if (TupIsNull(slot)) {
+				elog(LOG, "[SVM] Finalize the model.");
+				perform_SGD(node->model, NULL, batchstate, ith_tuple);
+                // can also free_SGDBatchState in ExecEndSGD
+                free_SGDBatchState(batchstate);
+				break;
+			}
+
+            
+            perform_SGD(node->model, slot, batchstate, ith_tuple);
+            ith_tuple = (ith_tuple + 1) % node->model->batch_size;
+			 	
+		}
+
+		/*
+		 * restore to user specified direction
+		 */
+        estate->es_direction = ForwardScanDirection;
+		/*
+		 * finally set the sorted flag to true
+		 */
+		node->sgd_done = true;
+		SO1_printf("ExecSGD: %s\n", "Performing SGD done");
+	}
+
+	/*
+	 * Get the first or next tuple from tuplesort. Returns NULL if no more
+	 * tuples.
+	 */
+    // TODO: using ExecStoreMinimalTuple to genreate the result tuple
+    node->ps.ps_ResultTupleSlot = ExecStoreMinimalTuple();
+	slot = node->ps.ps_ResultTupleSlot;
+
+	// (void) tupleshufflesort_gettupleslot(tupleShuffleSortState,
+	// 							  ScanDirectionIsForward(dir),
+	// 							  slot);
+	return slot;
 }
 
 /* ----------------------------------------------------------------
@@ -263,17 +311,8 @@ ExecInitSGD(SGD *node, EState *estate, int eflags)
  * ----------------------------------------------------------------
  */
 void
-ExecEndSGD(SeqScanState *node)
+ExecEndSGD(SGDState *node)
 {
-	Relation	relation;
-	HeapScanDesc scanDesc;
-
-	/*
-	 * get information from node
-	 */
-	relation = node->ss_currentRelation;
-	scanDesc = node->ss_currentScanDesc;
-
 	/*
 	 * Free the exprcontext
 	 */
@@ -283,17 +322,8 @@ ExecEndSGD(SeqScanState *node)
 	 * clean out the tuple table
 	 */
 	ExecClearTuple(node->ps.ps_ResultTupleSlot);
-	ExecClearTuple(node->ss_ScanTupleSlot);
 
-	/*
-	 * close heap scan
-	 */
-	heap_endscan(scanDesc);
-
-	/*
-	 * close the heap relation.
-	 */
-	ExecCloseScanRelation(relation);
+	ExecClearModel(node->model);
 }
 
 /* ----------------------------------------------------------------
@@ -308,15 +338,8 @@ ExecEndSGD(SeqScanState *node)
  * ----------------------------------------------------------------
  */
 void
-ExecReScanSeqScan(SeqScanState *node)
+ExecReScanSGD(SGDState *node)
 {
-	HeapScanDesc scan;
-
-	scan = node->ss_currentScanDesc;
-
-	heap_rescan(scan,			/* scan desc */
-				NULL);			/* new scan keys */
-
 	ExecScanReScan((ScanState *) node);
 }
 
@@ -355,3 +378,75 @@ ExecSeqRestrPos(SeqScanState *node)
 
 	heap_restrpos(scan);
 }
+
+
+/* ----------------------------------------------------------------
+ *		ExecResultMarkPos
+ * ----------------------------------------------------------------
+ */
+void
+ExecResultMarkPos(ResultState *node)
+{
+	PlanState  *outerPlan = outerPlanState(node);
+
+	if (outerPlan != NULL)
+		ExecMarkPos(outerPlan);
+	else
+		elog(DEBUG2, "Result nodes do not support mark/restore");
+}
+
+/* ----------------------------------------------------------------
+ *		ExecResultRestrPos
+ * ----------------------------------------------------------------
+ */
+void
+ExecResultRestrPos(ResultState *node)
+{
+	PlanState  *outerPlan = outerPlanState(node);
+
+	if (outerPlan != NULL)
+		ExecRestrPos(outerPlan);
+	else
+		elog(ERROR, "Result nodes do not support mark/restore");
+}
+
+// int
+// compute_loss_and_update_model(TupleShuffleSortState* state, Model* model,
+// 							  int ith_tuple, int batch_size, bool last_tuple) 
+// {
+	
+// 	ShuffleSortTuple* tuples = state->memtuples;
+// 	int last_updated = 0;
+// 	int i = 0;
+
+// 	for (ShuffleSortTuple* p = tuples; p < tuples + n; p++) {
+// 		double tuple_loss = compute_loss(p, model);
+// 		model->loss = model->loss + tuple_loss;
+// 		elog(LOG, "[SVM][Tuple %d] >>> Add %.2f loss to model.", ith_tuple, tuple_loss);
+// 		ith_tuple = (ith_tuple + 1) % batch_size;
+		
+// 		// going to update model
+// 		if (ith_tuple == 0) {
+// 			// update model
+// 			model->p1 += 1;
+// 			model->p2 += 1;
+// 			elog(LOG, "[SVM] >>> Update model (p1 = %d, p2 = %d, loss = %.2f).", model->p1, model->p2, model->loss);
+// 			last_updated = i;
+// 		}
+// 		++i;
+
+// 	}
+
+// 	if (last_tuple) {
+// 		if (n > 0 && last_updated < n - 1) {
+// 			model->p1 += 1;
+// 			model->p2 += 1;
+// 			elog(LOG, "[SVM] >>> Last: Update model (p1 = %d, p2 = %d, loss = %.2f).", model->p1, model->p2, model->loss);
+// 		}
+// 		else {
+// 			elog(LOG, "[SVM] >>> Has updated the model.");
+// 		}
+// 	}
+
+// 	return ith_tuple;
+// }

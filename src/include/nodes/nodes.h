@@ -53,6 +53,7 @@ typedef enum NodeTag
 	T_SeqScan,
 	// Lijie: add begin
 	T_ShuffleScan,
+	T_SGD,
 	// Lijie: add end
 	T_IndexScan,
 	T_IndexOnlyScan,

@@ -3644,6 +3644,39 @@ make_sort(PlannerInfo *root, Plan *lefttree, int numCols,
 	return node;
 }
 
+static ShuffleSort *
+make_shufflesort(PlannerInfo *root, Plan *lefttree, int numCols,
+		  AttrNumber *sortColIdx, Oid *sortOperators,
+		  Oid *collations, bool *nullsFirst,
+		  double limit_tuples)
+{
+	Sort	   *node = makeNode(ShuffleSort);
+	Plan	   *plan = &node->plan;
+	Path		sort_path;		/* dummy for result of cost_sort */
+
+	copy_plan_costsize(plan, lefttree); /* only care about copying size */
+	cost_shufflesort(&sort_path, root, NIL,
+			  lefttree->total_cost,
+			  lefttree->plan_rows,
+			  lefttree->plan_width,
+			  0.0,
+			  work_mem,
+			  limit_tuples);
+	plan->startup_cost = sort_path.startup_cost;
+	plan->total_cost = sort_path.total_cost;
+	plan->targetlist = lefttree->targetlist;
+	plan->qual = NIL;
+	plan->lefttree = lefttree;
+	plan->righttree = NULL;
+	node->numCols = numCols;
+	node->sortColIdx = sortColIdx;
+	node->sortOperators = sortOperators;
+	node->collations = collations;
+	node->nullsFirst = nullsFirst;
+
+	return node;
+}
+
 /*
  * prepare_sort_from_pathkeys
  *	  Prepare to sort according to given pathkeys
@@ -3985,6 +4018,34 @@ make_sort_from_pathkeys(PlannerInfo *root, Plan *lefttree, List *pathkeys,
 
 	/* Now build the Sort node */
 	return make_sort(root, lefttree, numsortkeys,
+					 sortColIdx, sortOperators, collations,
+					 nullsFirst, limit_tuples);
+}
+
+
+Sort *
+make_SGD_from_pathkeys(PlannerInfo *root, Plan *lefttree, List *pathkeys,
+						double limit_tuples)
+{
+	// int			numsortkeys;
+	AttrNumber *sortColIdx;
+	Oid		   *sortOperators;
+	Oid		   *collations;
+	bool	   *nullsFirst;
+
+	/* Compute sort column info, and adjust lefttree as needed */
+	lefttree = prepare_SGD_from_pathkeys(root, lefttree, pathkeys,
+										  NULL,
+										  NULL,
+										  false,
+										  &numsortkeys,
+										  &sortColIdx,
+										  &sortOperators,
+										  &collations,
+										  &nullsFirst);
+
+	/* Now build the Sort node */
+	return make_SGD(root, lefttree, numsortkeys,
 					 sortColIdx, sortOperators, collations,
 					 nullsFirst, limit_tuples);
 }

@@ -22,6 +22,7 @@
 #include "utils/reltrigger.h"
 #include "utils/sortsupport.h"
 #include "utils/tuplestore.h"
+#include "executor/nodeSGD.h"
 
 
 /* ----------------
@@ -1663,7 +1664,7 @@ typedef struct SortState
  */
 typedef struct ShuffleSortState
 {
-	ScanState	ss;				/* its first field is NodeTag */
+	ShuffleScanState	ss;				/* its first field is NodeTag */
 	// bool		randomAccess;	/* need random access to sort output? */
 	// bool		bounded;		/* is the result set bounded? */
 	// int64		bound;			/* if bounded, how many tuples are needed */
@@ -1676,9 +1677,9 @@ typedef struct ShuffleSortState
 
 typedef struct SGDState
 {
-	ShuffleSortState	sss;				/* its first field is NodeTag */
-	bool		randomAccess;	/* need random access to sort output? */
-	
+	PlanState	ps;				/* its first field is NodeTag */
+	Model	*model;
+	bool  sgd_done;		/* SGD completed yet? */
 } SGDState;
 /* ---------------------
  *	GroupState information

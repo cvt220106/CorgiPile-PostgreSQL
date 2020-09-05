@@ -4,11 +4,22 @@
 
 #include "nodes/execnodes.h"
 
-extern SeqScanState *ExecInitSeqScan(SeqScan *node, EState *estate, int eflags);
-extern TupleTableSlot *ExecSeqScan(SeqScanState *node);
-extern void ExecEndSeqScan(SeqScanState *node);
-extern void ExecSeqMarkPos(SeqScanState *node);
-extern void ExecSeqRestrPos(SeqScanState *node);
-extern void ExecReScanSeqScan(SeqScanState *node);
+typedef struct Model {
+    double total_loss;
+	double* w;
+    int batch_size;
+    double learning_rate;
+    double n_features;
+} Model;
 
-#endif   /* NODESEQSCAN_H */
+extern SGDState *ExecInitSGD(SGD *node, EState *estate, int eflags);
+extern TupleTableSlot *ExecSGD(SGDState *node, Model* model);
+extern void ExecEndSGD(SGDState *node);
+extern void ExecSGDMarkPos(SGDState *node);
+extern void ExecSGDRestrPos(SGDState *node);
+extern void ExecReScanSGD(SGDState *node);
+
+#endif
+
+
+

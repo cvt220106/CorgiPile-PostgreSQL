@@ -20,21 +20,9 @@
 #include "miscadmin.h"
 #include "utils/tupleShuffleSort.h"
 
-// Lijie: add begin
-void init_model(Model* model) {
-	model->loss = 0;
-	model->p1 = 0;
-	model->p2 = 0;
-}
 
-int perform_SGD(TupleShuffleSortState* tupleShuffleSortState, Model* model, int ith_tuple, 
-				int batch_size, bool last_tuple) {
 
-	ith_tuple = compute_loss_and_update_model(tupleShuffleSortState, model, ith_tuple, 
-					batch_size, last_tuple);
 
-	return ith_tuple;
-}
 
 void clear_buffer(TupleShuffleSortState* tupleShuffleSortState)
 {

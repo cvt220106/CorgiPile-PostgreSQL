@@ -140,6 +140,8 @@ typedef struct Query
 
 	List	   *sortClause;		/* a list of SortGroupClause's */
 
+	List	   *SGDClause;		/* a list of SortGroupClause's */
+
 	Node	   *limitOffset;	/* # of result tuples to skip (int8 expr) */
 	Node	   *limitCount;		/* # of result tuples to return (int8 expr) */
 

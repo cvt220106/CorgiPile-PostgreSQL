@@ -31,12 +31,7 @@
  */
 typedef struct Tuplesortstate Tuplesortstate;
 
-// Lijie: add begin
-typedef struct {
-	double loss;
-	int p1;
-	int p2;
-} Model;
+
 // Lijie: add end
 /*
  * We provide multiple interfaces to what is essentially the same code,

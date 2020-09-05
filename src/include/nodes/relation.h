@@ -212,6 +212,7 @@ typedef struct PlannerInfo
 	List	   *window_pathkeys;	/* pathkeys of bottom window, if any */
 	List	   *distinct_pathkeys;		/* distinctClause pathkeys, if any */
 	List	   *sort_pathkeys;	/* sortClause pathkeys, if any */
+	List	   *SGD_pathkeys;	/* SGDClause pathkeys, if any */
 
 	List	   *minmax_aggs;	/* List of MinMaxAggInfos */
 

@@ -198,6 +198,12 @@ ExecInitNode(Plan *node, EState *estate, int eflags)
 			break;
 		// Lijie: add end
 
+		case T_SGD:
+			result = (PlanState *) ExecInitSGD((SGD *) node,
+												   estate, eflags);
+			break;
+		// Lijie: add end
+
 		case T_IndexScan:
 			result = (PlanState *) ExecInitIndexScan((IndexScan *) node,
 													 estate, eflags);

@@ -529,6 +529,18 @@ compute_loss_and_update_model(TupleShuffleSortState* state, Model* model,
 
 // Lijie: add end
 */
+bool
+puttuple_into_buffer(TupleShuffleSortState *state, ShuffleSortTuple *tuple) {
+	Assert(state->memtupcount < state->memtupsize);
+	state->memtuples[state->memtupcount++] = *tuple;
+	bool buffer_full = false;
+
+	if (state->memtupcount == state->memtupsize)
+		buffer_full = true;
+
+	return buffer_full;
+}
+
 // Lijie add begin
 bool
 puttuple_into_buffer(TupleShuffleSortState *state, ShuffleSortTuple *tuple, bool last_tuple) {
@@ -850,11 +862,11 @@ tupleshufflesort_puttupleslot(TupleShuffleSortState *state, TupleTableSlot *slot
 	 */
 	COPYTUP(state, &stup, (void *) slot);
 
-	bool is_buffer_full_and_shuffled = puttuple_into_buffer(state, &stup, last_tuple);
+	bool buffer_full = puttuple_into_buffer(state, &stup);
 
 	MemoryContextSwitchTo(oldcontext);
 	
-	return is_buffer_full_and_shuffled;
+	return buffer_full;
 }
 
 // Lijie: add end
@@ -1024,8 +1036,7 @@ tupleshufflesort_performshuffle(TupleShuffleSortState *state)
  * If *should_free is set, the caller must pfree stup.tuple when done with it.
  */
 static bool
-tupleshufflesort_gettuple_common(TupleShuffleSortState *state, bool forward,
-						  ShuffleSortTuple *stup, bool *should_free)
+tupleshufflesort_gettuple_common(TupleShuffleSortState *state, ShuffleSortTuple *stup)
 {
 	unsigned int tuplen;
 
@@ -1043,175 +1054,11 @@ tupleshufflesort_gettuple_common(TupleShuffleSortState *state, bool forward,
 				}
 				state->eof_reached = true;
 
-				/*
-				 * Complain if caller tries to retrieve more tuples than
-				 * originally asked for in a bounded sort.  This is because
-				 * returning EOF here might be the wrong thing.
-				 */
-				if (state->bounded && state->current >= state->bound)
-					elog(ERROR, "retrieved too many tuples in a bounded sort");
 
 				return false;
 			}
-			else
-			{
-				if (state->current <= 0)
-					return false;
-
-				/*
-				 * if all tuples are fetched already then we return last
-				 * tuple, else - tuple before last returned.
-				 */
-				if (state->eof_reached)
-					state->eof_reached = false;
-				else
-				{
-					state->current--;	/* last returned tuple */
-					if (state->current <= 0)
-						return false;
-				}
-				*stup = state->memtuples[state->current - 1];
-				return true;
-			}
+			
 			break;
-
-		case TSS_SORTEDONTAPE:
-			Assert(forward || state->randomAccess);
-			*should_free = true;
-			if (forward)
-			{
-				if (state->eof_reached)
-					return false;
-				if ((tuplen = getlen(state, state->result_tape, true)) != 0)
-				{
-					READTUP(state, stup, state->result_tape, tuplen);
-					return true;
-				}
-				else
-				{
-					state->eof_reached = true;
-					return false;
-				}
-			}
-
-			/*
-			 * Backward.
-			 *
-			 * if all tuples are fetched already then we return last tuple,
-			 * else - tuple before last returned.
-			 */
-			if (state->eof_reached)
-			{
-				/*
-				 * Seek position is pointing just past the zero tuplen at the
-				 * end of file; back up to fetch last tuple's ending length
-				 * word.  If seek fails we must have a completely empty file.
-				 */
-				if (!LogicalTapeBackspace(state->tapeset,
-										  state->result_tape,
-										  2 * sizeof(unsigned int)))
-					return false;
-				state->eof_reached = false;
-			}
-			else
-			{
-				/*
-				 * Back up and fetch previously-returned tuple's ending length
-				 * word.  If seek fails, assume we are at start of file.
-				 */
-				if (!LogicalTapeBackspace(state->tapeset,
-										  state->result_tape,
-										  sizeof(unsigned int)))
-					return false;
-				tuplen = getlen(state, state->result_tape, false);
-
-				/*
-				 * Back up to get ending length word of tuple before it.
-				 */
-				if (!LogicalTapeBackspace(state->tapeset,
-										  state->result_tape,
-										  tuplen + 2 * sizeof(unsigned int)))
-				{
-					/*
-					 * If that fails, presumably the prev tuple is the first
-					 * in the file.  Back up so that it becomes next to read
-					 * in forward direction (not obviously right, but that is
-					 * what in-memory case does).
-					 */
-					if (!LogicalTapeBackspace(state->tapeset,
-											  state->result_tape,
-											  tuplen + sizeof(unsigned int)))
-						elog(ERROR, "bogus tuple length in backward scan");
-					return false;
-				}
-			}
-
-			tuplen = getlen(state, state->result_tape, false);
-
-			/*
-			 * Now we have the length of the prior tuple, back up and read it.
-			 * Note: READTUP expects we are positioned after the initial
-			 * length word of the tuple, so back up to that point.
-			 */
-			if (!LogicalTapeBackspace(state->tapeset,
-									  state->result_tape,
-									  tuplen))
-				elog(ERROR, "bogus tuple length in backward scan");
-			READTUP(state, stup, state->result_tape, tuplen);
-			return true;
-
-		case TSS_FINALMERGE:
-			Assert(forward);
-			*should_free = true;
-
-			/*
-			 * This code should match the inner loop of mergeonerun().
-			 */
-			if (state->memtupcount > 0)
-			{
-				int			srcTape = state->memtuples[0].tupindex;
-				Size		tuplen;
-				int			tupIndex;
-				ShuffleSortTuple  *newtup;
-
-				*stup = state->memtuples[0];
-				/* returned tuple is no longer counted in our memory space */
-				if (stup->tuple)
-				{
-					tuplen = GetMemoryChunkSpace(stup->tuple);
-					state->availMem += tuplen;
-					state->mergeavailmem[srcTape] += tuplen;
-				}
-				tupleshufflesort_heap_siftup(state, false);
-				if ((tupIndex = state->mergenext[srcTape]) == 0)
-				{
-					/*
-					 * out of preloaded data on this tape, try to read more
-					 *
-					 * Unlike mergeonerun(), we only preload from the single
-					 * tape that's run dry.  See mergepreread() comments.
-					 */
-					mergeprereadone(state, srcTape);
-
-					/*
-					 * if still no data, we've reached end of run on this tape
-					 */
-					if ((tupIndex = state->mergenext[srcTape]) == 0)
-						return true;
-				}
-				/* pull next preread tuple from list, insert in heap */
-				newtup = &state->memtuples[tupIndex];
-				state->mergenext[srcTape] = newtup->tupindex;
-				if (state->mergenext[srcTape] == 0)
-					state->mergelast[srcTape] = 0;
-				tupleshufflesort_heap_insert(state, newtup, srcTape, false);
-				/* put the now-unused memtuples entry on the freelist */
-				newtup->tupindex = state->mergefreelist;
-				state->mergefreelist = tupIndex;
-				state->mergeavailslots[srcTape]++;
-				return true;
-			}
-			return false;
 
 		default:
 			elog(ERROR, "invalid tuplesort state");

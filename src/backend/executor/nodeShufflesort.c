@@ -70,6 +70,8 @@ ExecShuffleSort(ShuffleSortState *node)
 	 * If first time through, read all tuples from outer plan and pass them to
 	 * tuplesort.c. Subsequent calls just fetch tuples from tuplesort.
 	 */
+	// bool buffer_full = false;
+
 
 	if (!node->shuffle_sort_Done)
 	{
@@ -122,25 +124,52 @@ ExecShuffleSort(ShuffleSortState *node)
 		*/
 		for (;;)
 		{
+			if (node->buffer_full == false) {
+      			// fetch a tuple from the ShuffleScanNode 
+      			slot = ExecProcNode(outerNode);
+      			// put_tuple_into_buffer(tuple, buffer);
+
+				if (TupIsNull(slot)) {
+					shuffle_buffer();
+				}
+				bool buffer_full = tupleshufflesort_puttupleslot(tupleShuffleSortState, slot);
+				if (buffer_full) {
+					tupleshufflesort_performshuffle(tupleShuffleSortState);
+					node->buffer_full = true;
+				}
+				
+   			}
+			else {
+				(void) tupleshufflesort_gettupleslot(tupleShuffleSortState,
+								  ScanDirectionIsForward(dir),
+								  slot);
+      			slot = buffer[index];
+				index++;
+				if (index == buffer_size) {
+					clear_buffer();
+					buffer_full = false;
+				}
+
+				return slot;
+			}
+    	}
+
+
 			// Lijie: read a tuple from the previous node (e.g., SeqScan)
 			slot = ExecProcNode(outerNode);
-			bool last_tuple = false;
 
 			// Lijie: we finalize the model when finishing reading all the tuples
-			if (TupIsNull(slot)) {
-				elog(LOG, "[SVM] Finalize the model.");
+			if (TupIsNull(slot) || buffer_is_full) {
 				// True means the last tuple, so that we need to force shuffling the buffered tuples
 				last_tuple = true;
 				bool is_buffer_empty = tupleshufflesort_puttupleslot(tupleShuffleSortState, slot, last_tuple);
 				
-				// finalize_model(tuplesortstate, svm_model);
-				ith_tuple = perform_SGD(tupleShuffleSortState, svm_model, ith_tuple, batch_size, last_tuple);
-				clear_buffer(tupleShuffleSortState);
+				
 				// Lijie: add end
 				break;
 			}
 
-			
+			tupleshufflesort_puttupleslot(tupleShuffleSortState, slot, last_tuple);
 			// Lijie: put a tuple into the buffer and perform shuffling when the buffer is full
 			bool buffer_full_and_shuffled = tupleshufflesort_puttupleslot(tupleShuffleSortState, slot, last_tuple);
 			if (buffer_full_and_shuffled) {
@@ -149,6 +178,8 @@ ExecShuffleSort(ShuffleSortState *node)
 				// and then clear the buffer for further reading
 				clear_buffer(tupleShuffleSortState);
 			}
+
+			shuffle_sort();
 			 	
 		}
 
@@ -185,6 +216,25 @@ ExecShuffleSort(ShuffleSortState *node)
 	return slot;
 }
 
+	while(true) {
+    	if (node->buffer_full == false) {
+      		// fetch a tuple from the ShuffleScanNode 
+      		tuple = ExecProcNode(ShuffleScanNode);
+      		put_tuple_into_buffer(tuple, buffer);
+   		}
+    	else {
+      		if (buffer_unshuffled)
+        	shuffle_buffer();
+      		++index;
+      		return buffer[index];
+    	}
+  	}
+
+	if (buffer_is_not_full)
+		fetch_
+		put_tuple_into_buffer()
+	
+
 
 /* ----------------------------------------------------------------
  *		ExecInitSort
@@ -213,11 +263,7 @@ ExecInitShuffleSort(ShuffleSort *node, EState *estate, int eflags)
 	 * mark/restore.  We also prefer to materialize the sort output if we
 	 * might be called on to rewind and replay it many times.
 	 */
-	shuffleSortState->randomAccess = (eflags & (EXEC_FLAG_REWIND |
-										 EXEC_FLAG_BACKWARD |
-										 EXEC_FLAG_MARK)) != 0;
-
-	shuffleSortState->bounded = false;
+	
 	shuffleSortState->shuffle_sort_Done = false;
 	shuffleSortState->tupleShuffleSortState = NULL;
 
@@ -276,6 +322,8 @@ ExecEndSort(ShuffleSortState *node)
 	ExecClearTuple(node->ss.ss_ScanTupleSlot);
 	/* must drop pointer to sort result tuple */
 	ExecClearTuple(node->ss.ps.ps_ResultTupleSlot);
+
+	clear_buffer(tupleShuffleSortState);
 
 	/*
 	 * Release tuplesort resources

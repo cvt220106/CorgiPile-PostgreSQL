@@ -195,7 +195,7 @@ TupleTableSlot *
 ExecSGD(SGDState *node, Model* model)
 {
 
-    model <- 1 update (fetch all the tuples)
+    // model <- 1 update (fetch all the tuples)
 
 	EState	   *estate;
 	TupleTableSlot *slot;
@@ -214,7 +214,7 @@ ExecSGD(SGDState *node, Model* model)
 	 * If first time through, read all tuples from outer plan and pass them to
 	 * tuplesort.c. Subsequent calls just fetch tuples from tuplesort.
 	 */
-    for (n )
+    //for (n )
 	if (!node->sgd_done)
 	{
 		// ShuffleSort	   *plannode = (ShuffleSort *) node->ss.ps.plan;
@@ -298,7 +298,7 @@ ExecSGD(SGDState *node, Model* model)
 	 * tuples.
 	 */
     // TODO: using ExecStoreMinimalTuple to genreate the result tuple
-    node->ps.ps_ResultTupleSlot = Model->w, => ExecStoreMinimalTuple();
+    node->ps.ps_ResultTupleSlot; // = Model->w, => ExecStoreMinimalTuple();
 	slot = node->ps.ps_ResultTupleSlot;
 
 	// (void) tupleshufflesort_gettupleslot(tupleShuffleSortState,

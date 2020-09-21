@@ -57,6 +57,7 @@ typedef struct TupleShuffleSortState TupleShuffleSortState;
  * The "index_hash" API is similar to index_btree, but the tuples are
  * actually sorted by their hash codes not the raw data.
  */
+extern void tupleshufflesort_set_end(TupleShuffleSortState *state);
 
 extern TupleShuffleSortState *tupleshufflesort_begin_heap(TupleDesc tupDesc, int workMem);
 extern TupleShuffleSortState *tupleshufflesort_begin_cluster(TupleDesc tupDesc,
@@ -90,12 +91,11 @@ extern int compute_loss_and_update_model(TupleShuffleSortState* state, Model* mo
 
 extern void clear_tupleshufflesort_state(TupleShuffleSortState* tuplesortstate);
 
-extern bool tupleshufflesort_puttupleslot(TupleShuffleSortState *state, TupleTableSlot *slot, 
-			bool last_tuple);
+extern bool tupleshufflesort_puttupleslot(TupleShuffleSortState *state, TupleTableSlot *slot);
 // lijie: end
 
-extern bool tupleshufflesort_gettupleslot(TupleShuffleSortState *state, bool forward,
-					   TupleTableSlot *slot);
+extern bool tupleshufflesort_gettupleslot(TupleShuffleSortState *state, 
+					   TupleTableSlot *slot, bool eof_reach);
 extern HeapTuple tupleshufflesort_getheaptuple(TupleShuffleSortState *state, bool forward,
 					   bool *should_free);
 extern IndexTuple tupleshufflesort_getindextuple(TupleShuffleSortState *state, bool forward,

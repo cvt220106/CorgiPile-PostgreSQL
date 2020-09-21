@@ -53,30 +53,18 @@ ExecShuffleSort(ShuffleSortState *node)
 {
 	EState	   *estate;
 	ScanDirection dir;
-	TupleShuffleSortState *tupleShuffleSortState;
+	TupleShuffleSortState *state;
 	TupleTableSlot *slot;
-
-	/*
-	 * get state info from node
-	 */
-	SO1_printf("ExecShuffleSort: %s\n",
-			   "entering routine");
 
 	estate = node->ss.ps.state;
 	dir = estate->es_direction;
-	tupleShuffleSortState = (TupleShuffleSortState *) node->tupleShuffleSortState;
+	state = (TupleShuffleSortState *) node->tupleShuffleSortState;
 
-	/*
-	 * If first time through, read all tuples from outer plan and pass them to
-	 * tuplesort.c. Subsequent calls just fetch tuples from tuplesort.
-	 */
-	// bool buffer_full = false;
-
-
-	if (!node->shuffle_sort_Done)
+	PlanState  *outerNode;
+	
+	if (state == NULL) // Going to init
 	{
 		ShuffleSort	   *plannode = (ShuffleSort *) node->ss.ps.plan;
-		PlanState  *outerNode;
 		TupleDesc	tupDesc;
 
 		SO1_printf("ExecShuffleSort: %s\n",
@@ -98,141 +86,132 @@ ExecShuffleSort(ShuffleSortState *node)
 		outerNode = outerPlanState(node);
 		tupDesc = ExecGetResultType(outerNode);
 
-		tupleShuffleSortState = tupleshufflesort_begin_heap(tupDesc, work_mem);
+		// init buffer
+		state = tupleshufflesort_begin_heap(tupDesc, work_mem);
                                               
-		node->tupleShuffleSortState = (void *) tupleShuffleSortState;
+		node->tupleShuffleSortState = (void *) state;
 
-
-		// Lijie: add begin 
-		// =================== Model initialization =========================
-		// We may put init_model() to ExecInitSort
-
-		/*
-		Model svm;
-		Model* svm_model = &svm;
-		init_model(svm_model);
-		elog(LOG, "[SVM] Initialize SVM model (loss = 0, p1 = 0, p2 = 0)");
-		// =================== Model initialization =========================
-		// Lijie: add end
-
-		
-
-		// Lijie: add begin
-		int batch_size = 5;
-		int ith_tuple = 0;
-		elog(LOG, "[SVM] Batch size = 5");
-		*/
-		for (;;)
-		{
-			if (node->buffer_full == false) {
-      			// fetch a tuple from the ShuffleScanNode 
-      			slot = ExecProcNode(outerNode);
-      			// put_tuple_into_buffer(tuple, buffer);
-
-				if (TupIsNull(slot)) {
-					shuffle_buffer();
-				}
-				bool buffer_full = tupleshufflesort_puttupleslot(tupleShuffleSortState, slot);
-				if (buffer_full) {
-					tupleshufflesort_performshuffle(tupleShuffleSortState);
-					node->buffer_full = true;
-				}
-				
-   			}
-			else {
-				(void) tupleshufflesort_gettupleslot(tupleShuffleSortState,
-								  ScanDirectionIsForward(dir),
-								  slot);
-      			slot = buffer[index];
-				index++;
-				if (index == buffer_size) {
-					clear_buffer();
-					buffer_full = false;
-				}
-
-				return slot;
-			}
-    	}
-
-
-			// Lijie: read a tuple from the previous node (e.g., SeqScan)
-			slot = ExecProcNode(outerNode);
-
-			// Lijie: we finalize the model when finishing reading all the tuples
-			if (TupIsNull(slot) || buffer_is_full) {
-				// True means the last tuple, so that we need to force shuffling the buffered tuples
-				last_tuple = true;
-				bool is_buffer_empty = tupleshufflesort_puttupleslot(tupleShuffleSortState, slot, last_tuple);
-				
-				
-				// Lijie: add end
-				break;
-			}
-
-			tupleshufflesort_puttupleslot(tupleShuffleSortState, slot, last_tuple);
-			// Lijie: put a tuple into the buffer and perform shuffling when the buffer is full
-			bool buffer_full_and_shuffled = tupleshufflesort_puttupleslot(tupleShuffleSortState, slot, last_tuple);
-			if (buffer_full_and_shuffled) {
-				// perform SGD on the buffered tuples, update the model
-				ith_tuple = perform_SGD(tupleShuffleSortState, svm_model, ith_tuple, batch_size, last_tuple);
-				// and then clear the buffer for further reading
-				clear_buffer(tupleShuffleSortState);
-			}
-
-			shuffle_sort();
-			 	
-		}
-
-		/*
-		 * Complete the sort.
-		 */
-		// tuplesort_performsort(tuplesortstate);
-		
-		/*
-		 * restore to user specified direction
-		 */
-		estate->es_direction = dir;
-
-		/*
-		 * finally set the sorted flag to true
-		 */
-		node->shuffle_sort_Done = true;
-		node->bounded_Done = node->bounded;
-		node->bound_Done = node->bound;
-		SO1_printf("ExecSort: %s\n", "sorting done");
 	}
 
-	SO1_printf("ExecShuffleSort: %s\n",
-			   "retrieving tuple from tupleshufflesort");
+	if (node->buffer_empty) {
+		bool buffer_full = false;
 
-	/*
-	 * Get the first or next tuple from tuplesort. Returns NULL if no more
-	 * tuples.
-	 */
-	slot = node->ss.ps.ps_ResultTupleSlot;
-	(void) tupleshufflesort_gettupleslot(tupleShuffleSortState,
-								  ScanDirectionIsForward(dir),
-								  slot);
-	return slot;
-}
-
-	while(true) {
-    	if (node->buffer_full == false) {
+		while(true) {
       		// fetch a tuple from the ShuffleScanNode 
-      		tuple = ExecProcNode(ShuffleScanNode);
-      		put_tuple_into_buffer(tuple, buffer);
-   		}
-    	else {
-      		if (buffer_unshuffled)
-        	shuffle_buffer();
-      		++index;
-      		return buffer[index];
-    	}
-  	}
+      		slot = ExecProcNode(outerNode);
+      		// put_tuple_into_buffer(tuple, buffer);
 
-	if (buffer_is_not_full)
-		fetch_
-		put_tuple_into_buffer()
+			if (TupIsNull(slot) == false) {
+				buffer_full = tupleshufflesort_puttupleslot(state, slot);
+			} 
+			else {
+				node->eof_reach = true;
+				//tupleshufflesort_set_end(state);
+			}
+			
+			if (buffer_full || TupIsNull(slot)) {
+				tupleshufflesort_performshuffle(state);
+				node->buffer_empty = false;
+				break;
+			}	
+   		}
+	}
+	
+
+	slot = node->ss.ps.ps_ResultTupleSlot;
+	bool tuple_left = tupleshufflesort_gettupleslot(state, slot, false);
+	if (!tuple_left) {
+		node->buffer_empty = true;
+		// clear_buffer(); set current_count = 0
+
+		if (node->eof_reach) {
+			tupleshufflesort_gettupleslot(state, slot, true);
+		}
+	}
+
+	return slot;
+	
+}	
+
+
+// 			// Lijie: read a tuple from the previous node (e.g., SeqScan)
+// 			slot = ExecProcNode(outerNode);
+
+// 			// Lijie: we finalize the model when finishing reading all the tuples
+// 			if (TupIsNull(slot) || buffer_is_full) {
+// 				// True means the last tuple, so that we need to force shuffling the buffered tuples
+// 				last_tuple = true;
+// 				bool is_buffer_empty = tupleshufflesort_puttupleslot(tupleShuffleSortState, slot, last_tuple);
+				
+				
+// 				// Lijie: add end
+// 				break;
+// 			}
+
+// 			tupleshufflesort_puttupleslot(tupleShuffleSortState, slot, last_tuple);
+// 			// Lijie: put a tuple into the buffer and perform shuffling when the buffer is full
+// 			bool buffer_full_and_shuffled = tupleshufflesort_puttupleslot(tupleShuffleSortState, slot, last_tuple);
+// 			if (buffer_full_and_shuffled) {
+// 				// perform SGD on the buffered tuples, update the model
+// 				ith_tuple = perform_SGD(tupleShuffleSortState, svm_model, ith_tuple, batch_size, last_tuple);
+// 				// and then clear the buffer for further reading
+// 				clear_buffer(tupleShuffleSortState);
+// 			}
+
+// 			shuffle_sort();
+			 	
+// 		}
+
+// 		/*
+// 		 * Complete the sort.
+// 		 */
+// 		// tuplesort_performsort(tuplesortstate);
+		
+// 		/*
+// 		 * restore to user specified direction
+// 		 */
+// 		estate->es_direction = dir;
+
+// 		/*
+// 		 * finally set the sorted flag to true
+// 		 */
+// 		node->shuffle_sort_Done = true;
+// 		node->bounded_Done = node->bounded;
+// 		node->bound_Done = node->bound;
+// 		SO1_printf("ExecSort: %s\n", "sorting done");
+// 	}
+
+// 	SO1_printf("ExecShuffleSort: %s\n",
+// 			   "retrieving tuple from tupleshufflesort");
+
+// 	/*
+// 	 * Get the first or next tuple from tuplesort. Returns NULL if no more
+// 	 * tuples.
+// 	 */
+// 	slot = node->ss.ps.ps_ResultTupleSlot;
+// 	(void) tupleshufflesort_gettupleslot(tupleShuffleSortState,
+// 								  ScanDirectionIsForward(dir),
+// 								  slot);
+// 	return slot;
+// }
+
+// 	while(true) {
+//     	if (node->buffer_full == false) {
+//       		// fetch a tuple from the ShuffleScanNode 
+//       		tuple = ExecProcNode(ShuffleScanNode);
+//       		put_tuple_into_buffer(tuple, buffer);
+//    		}
+//     	else {
+//       		if (buffer_unshuffled)
+//         	shuffle_buffer();
+//       		++index;
+//       		return buffer[index];
+//     	}
+//   	}
+
+// 	if (buffer_is_not_full)
+// 		fetch_
+// 		put_tuple_into_buffer()
 	
 
 

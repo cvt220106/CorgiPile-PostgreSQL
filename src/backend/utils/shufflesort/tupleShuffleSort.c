@@ -174,7 +174,7 @@ typedef enum
 	TSS_INITIAL,				/* Loading tuples; still within memory limit */
 	// TSS_BOUNDED,				/* Loading tuples into bounded-size heap */
 	// TSS_BUILDRUNS,				/* Loading tuples; writing to tape */
-	TSS_SORTEDINMEM,			/* Sort completed entirely in memory */
+	TSS_BUFFER_FULL,			/* Sort completed entirely in memory */
 	// TSS_SORTEDONTAPE,			/* Sort completed, final run is on tape */
 	// TSS_FINALMERGE				/* Performing final merge on-the-fly */
 } TupShuffleSortStatus;
@@ -541,20 +541,19 @@ puttuple_into_buffer(TupleShuffleSortState *state, ShuffleSortTuple *tuple) {
 	return buffer_full;
 }
 
+void
+tupleshufflesort_set_end(TupleShuffleSortState *state)
+{
+	state->eof_reached = true;
+}
+
 // Lijie add begin
+/*
 bool
 puttuple_into_buffer(TupleShuffleSortState *state, ShuffleSortTuple *tuple, bool last_tuple) {
 	switch (state->status)
 	{
 		case TSS_INITIAL:
-
-			/*
-			 * Save the tuple into the unsorted array.  First, grow the array
-			 * as needed.  Note that we try to grow the array when there is
-			 * still one free slot remaining --- if we fail, there'll still be
-			 * room to store the incoming tuple, and then we'll switch to
-			 * tape-based operation.
-			 */
 
 			if (last_tuple) {
 				// buffer is empty
@@ -575,19 +574,7 @@ puttuple_into_buffer(TupleShuffleSortState *state, ShuffleSortTuple *tuple, bool
 			}
 			else
 				return false;
-			
-			/*
-			 * Check if it's time to switch over to a bounded heapsort. We do
-			 * so if the input tuple count exceeds twice the desired tuple
-			 * count (this is a heuristic for where heapsort becomes cheaper
-			 * than a quicksort), or if we've just filled workMem and have
-			 * enough tuples to meet the bound.
-			 *
-			 * Note that once we enter TSS_BOUNDED state we will always try to
-			 * complete the sort that way.  In the worst case, if later input
-			 * tuples are larger than earlier ones, this might cause us to
-			 * exceed workMem significantly.
-			 */
+
 		case TSS_SORTEDINMEM
 
 		default:
@@ -595,6 +582,7 @@ puttuple_into_buffer(TupleShuffleSortState *state, ShuffleSortTuple *tuple, bool
 			return false;
 	}
 }
+*/
 
 // Lijie add end
 
@@ -845,13 +833,13 @@ tupleshufflesort_end(TupleShuffleSortState *state)
  * Note that the input data is always copied; the caller need not save it.
  */
 bool
-tupleshufflesort_puttupleslot(TupleShuffleSortState *state, TupleTableSlot *slot, bool last_tuple)
+tupleshufflesort_puttupleslot(TupleShuffleSortState *state, TupleTableSlot *slot)
 {
-	if (last_tuple) {
-		bool is_buffer_full_and_shuffled = puttuple_into_buffer(state, NULL, last_tuple);
-		return is_buffer_full_and_shuffled;
+	// if (last_tuple) {
+	// 	bool is_buffer_full_and_shuffled = puttuple_into_buffer(state, NULL, last_tuple);
+	// 	return is_buffer_full_and_shuffled;
 
-	}
+	// }
 
 	MemoryContext oldcontext = MemoryContextSwitchTo(state->shufflesortcontext);
 	ShuffleSortTuple	stup;
@@ -950,7 +938,19 @@ tupleshufflesort_putdatum(TupleShuffleSortState *state, Datum val, bool isNull)
 	MemoryContextSwitchTo(oldcontext);
 }
 
+void
+tupleshufflesort_performshuffle(TupleShuffleSortState *state) 
+{
+	MemoryContext oldcontext = MemoryContextSwitchTo(state->shufflesortcontext);
 
+	if (state->memtupcount > 1) {
+		shuffle_tuple(state->memtuples, state->memtupcount, state);
+	}
+
+	MemoryContextSwitchTo(oldcontext);
+}
+
+/*
 void
 tupleshufflesort_performshuffle(TupleShuffleSortState *state)
 {
@@ -960,15 +960,11 @@ tupleshufflesort_performshuffle(TupleShuffleSortState *state)
 	{
 		case TSS_INITIAL:
 
-			/*
-			 * We were able to accumulate all the tuples within the allowed
-			 * amount of memory.  Just qsort 'em and we're done.
-			 */
+			
 			if (state->memtupcount > 1)
 			{
 				
-				/* Can we use the single-key sort function? */
-				/* modified by Lijie
+				
 				if (state->onlyKey != NULL)
 					qsort_ssup(state->memtuples, state->memtupcount,
 							   state->onlyKey);
@@ -977,25 +973,13 @@ tupleshufflesort_performshuffle(TupleShuffleSortState *state)
 								state->memtupcount,
 								state->comparetup,
 								state);
-				*/
+			
 				shuffle_tuple(state->memtuples, state->memtupcount, state);
 			}
-			/*
-			state->current = 0;
-			state->eof_reached = false;
-			state->markpos_offset = 0;
-			state->markpos_eof = false;
-			state->status = TSS_SORTEDINMEM;
-			*/
+			
 			break;
 
 		case TSS_BOUNDED:
-
-			/*
-			 * We were able to accumulate all the tuples required for output
-			 * in memory, using a heap to eliminate excess tuples.  Now we
-			 * have to transform the heap to a properly-sorted array.
-			 */
 			sort_bounded_heap(state);
 			state->current = 0;
 			state->eof_reached = false;
@@ -1006,12 +990,6 @@ tupleshufflesort_performshuffle(TupleShuffleSortState *state)
 
 		case TSS_BUILDRUNS:
 
-			/*
-			 * Finish tape-based sort.  First, flush all tuples remaining in
-			 * memory out to tape; then merge until we have a single remaining
-			 * run (or, if !randomAccess, one run per tape). Note that
-			 * mergeruns sets the correct state->status.
-			 */
 			dumptuples(state, true);
 			mergeruns(state);
 			state->eof_reached = false;
@@ -1029,12 +1007,34 @@ tupleshufflesort_performshuffle(TupleShuffleSortState *state)
 
 	MemoryContextSwitchTo(oldcontext);
 }
+*/
+
 
 /*
  * Internal routine to fetch the next tuple in either forward or back
  * direction into *stup.  Returns FALSE if no more tuples.
  * If *should_free is set, the caller must pfree stup.tuple when done with it.
  */
+static bool
+tupleshufflesort_gettuple_common(TupleShuffleSortState *state, ShuffleSortTuple *stup)
+{
+	// unsigned int tuplen;
+
+	if (state->current < state->memtupcount)
+		*stup = state->memtuples[state->current++];
+
+	// if there is not any tuple left in the buffer
+	if (state->current == state->memtupcount) {
+		
+		return false;
+	}
+		
+	return true;
+}
+
+	
+
+/*
 static bool
 tupleshufflesort_gettuple_common(TupleShuffleSortState *state, ShuffleSortTuple *stup)
 {
@@ -1062,9 +1062,10 @@ tupleshufflesort_gettuple_common(TupleShuffleSortState *state, ShuffleSortTuple 
 
 		default:
 			elog(ERROR, "invalid tuplesort state");
-			return false;		/* keep compiler quiet */
+			return false;		
 	}
 }
+*/
 
 /*
  * Fetch the next tuple in either forward or back direction.
@@ -1072,14 +1073,45 @@ tupleshufflesort_gettuple_common(TupleShuffleSortState *state, ShuffleSortTuple 
  * and return FALSE.
  */
 bool
-tupleshufflesort_gettupleslot(TupleShuffleSortState *state, bool forward,
-					   TupleTableSlot *slot)
+tupleshufflesort_gettupleslot(TupleShuffleSortState *state, 
+					   TupleTableSlot *slot, bool eof_reach)
 {
 	MemoryContext oldcontext = MemoryContextSwitchTo(state->shufflesortcontext);
 	ShuffleSortTuple	stup;
-	bool		should_free;
+	bool should_free = false;
+	bool tuple_left;
 
-	if (!tupleshufflesort_gettuple_common(state, forward, &stup, &should_free))
+	if (eof_reach) {
+		stup.tuple = NULL;
+	}
+	else {
+		tuple_left = tupleshufflesort_gettuple_common(state, &stup);
+	}
+	
+	MemoryContextSwitchTo(oldcontext);
+
+	if (stup.tuple)
+	{
+		ExecStoreMinimalTuple((MinimalTuple) stup.tuple, slot, should_free);
+		return tuple_left;
+	}
+	else
+	{
+		ExecClearTuple(slot);
+		return false;
+	}
+}
+
+/*
+bool
+tupleshufflesort_gettupleslot(TupleShuffleSortState *state, bool forward,
+					   TupleTableSlot *slot, )
+{
+	MemoryContext oldcontext = MemoryContextSwitchTo(state->shufflesortcontext);
+	ShuffleSortTuple	stup;
+	bool should_free = false;
+
+	if (!tupleshufflesort_gettuple_common(state, &stup))   //, &should_free))
 		stup.tuple = NULL;
 
 	MemoryContextSwitchTo(oldcontext);
@@ -1095,6 +1127,7 @@ tupleshufflesort_gettupleslot(TupleShuffleSortState *state, bool forward,
 		return false;
 	}
 }
+*/
 
 /*
  * Fetch the next tuple in either forward or back direction.

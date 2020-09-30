@@ -10,6 +10,7 @@ typedef struct Model {
     int batch_size;
     double learning_rate;
     double n_features;
+    int iter_num;
 } Model;
 
 extern SGDState *ExecInitSGD(SGD *node, EState *estate, int eflags);

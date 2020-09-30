@@ -230,36 +230,14 @@ ExecSGD(SGDState *node, Model* model)
 		 */
 		estate->es_direction = ForwardScanDirection;
 
-		/*
-		 * Initialize tuplesort module.
-		 */
-		// SO1_printf("ExecSGD: %s\n",
-		// 		   "calling tupleshufflesort_begin");
-
 		// outerNode = ShuffleScanNode
 		outerNode = outerPlanState(node);
 		tupDesc = ExecGetResultType(outerNode);
                                               
 		// node->tupleShuffleSortState = (void *) tupleShuffleSortState;
 
-
-		// Lijie: add begin 
-		// =================== Model initialization =========================
-		// We may put init_model() to ExecInitSort
-
-		/*
-		Model svm;
-		Model* svm_model = &svm;
-		init_model(svm_model);
-		elog(LOG, "[SVM] Initialize SVM model (loss = 0, p1 = 0, p2 = 0)");
-		// =================== Model initialization =========================
-		// Lijie: add end
-
-		// Lijie: add begin
-		int batch_size = 5;
-		int ith_tuple = 0;
-		elog(LOG, "[SVM] Batch size = 5");
-		*/
+		int iter_num = model->iter_num;
+		int ith_iter = 1;
         int ith_tuple = 0;
 
 		for (;;)
@@ -267,13 +245,22 @@ ExecSGD(SGDState *node, Model* model)
 			// Lijie: read a tuple from the previous node (e.g., ShuffleSort)
 			slot = ExecProcNode(outerNode);
 
-			// Lijie: we finalize the model when finishing reading all the tuples
 			if (TupIsNull(slot)) {
-				elog(LOG, "[SVM] Finalize the model.");
-				perform_SGD(node->model, NULL, batchstate, ith_tuple);
-                // can also free_SGDBatchState in ExecEndSGD
-                free_SGDBatchState(batchstate);
-				break;
+				if (ith_iter == iter_num) {
+					elog(LOG, "[SVM] Finalize the model.");
+					perform_SGD(node->model, NULL, batchstate, ith_tuple);
+                	// can also free_SGDBatchState in ExecEndSGD
+                	free_SGDBatchState(batchstate);
+					break;
+				}
+				else {
+					elog(LOG, "[SVM] Finish Iteration %d.", ith_iter);
+					perform_SGD(node->model, NULL, batchstate, ith_tuple);
+					free_SGDBatchState(batchstate);
+					ExecReScan(outerNode);
+					ith_tuple = 0;
+				}
+				++ith_iter;
 			}
 
             

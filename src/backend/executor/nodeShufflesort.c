@@ -308,7 +308,7 @@ ExecEndSort(ShuffleSortState *node)
 	 * Release tuplesort resources
 	 */
 	if (node->tupleShuffleSortState != NULL)
-		tuplesort_end((TupleShuffleSortState *) node->tupleShuffleSortState);
+		tupleshufflesort_end((TupleShuffleSortState *) node->tupleShuffleSortState);
 	node->tupleShuffleSortState = NULL;
 
 	/*
@@ -367,8 +367,8 @@ ExecReScanShuffleSort(ShuffleSortState *node)
 	 * NULL then it will be re-scanned by ExecProcNode, else no reason to
 	 * re-scan it at all.
 	 */
-	if (!node->shuffle_sort_Done)
-		return;
+	// if (!node->shuffle_sort_Done)
+	// 	return;
 
 	/* must drop pointer to sort result tuple */
 	ExecClearTuple(node->ss.ps.ps_ResultTupleSlot);
@@ -380,13 +380,10 @@ ExecReScanShuffleSort(ShuffleSortState *node)
 	 *
 	 * Otherwise we can just rewind and rescan the sorted output.
 	 */
-	if (node->ss.ps.lefttree->chgParam != NULL ||
-		node->bounded != node->bounded_Done ||
-		node->bound != node->bound_Done ||
-		!node->randomAccess)
+	if (node->ss.ps.lefttree->chgParam != NULL)
 	{
 		node->shuffle_sort_Done = false;
-		tuplesort_end((TupleShuffleSortState *) node->tupleShuffleSortState);
+		tupleshufflesort_end((TupleShuffleSortState *) node->tupleShuffleSortState);
 		node->tupleShuffleSortState = NULL;
 
 		/*

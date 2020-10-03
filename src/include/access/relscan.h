@@ -39,7 +39,11 @@ typedef struct HeapScanDescData
 	bool		rs_syncscan;	/* report location to syncscan logic? */
 
 	BlockNumber* rs_shuffled_block_ids; // only used for ShuffleScan operator
-	BlockNumber rs_current_index; // only used for ShuffleScan operator
+	BlockNumber shuffled_block_id_array_index; // only used for ShuffleScan operator
+	BlockNumber page_num_per_block;
+	BlockNumber io_big_block_num;
+
+	bool drop_last; // drop the last unfilled block
 
 	/* scan current state */
 	bool		rs_inited;		/* false = scan not init'd yet */

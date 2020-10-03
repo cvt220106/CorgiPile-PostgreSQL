@@ -71,6 +71,10 @@
 #include "utils/tqual.h"
 
 
+// added by Lijie
+#define IOBigBlockSize 10 * 1024 * 1024 // 10MB
+// added end
+
 /* GUC variable */
 bool		synchronize_seqscans = true;
 
@@ -716,17 +720,28 @@ heapgettup_pagemode(HeapScanDesc scan,
 				return;
 			}
 
-			// Lijie: add begin
-			// Shuffle the page ids before reading any page
-			BlockNumber n = scan->rs_nblocks;
-			scan->rs_shuffled_block_ids = (BlockNumber *) palloc(sizeof(BlockNumber) * n);
-			//
-			for (BlockNumber i = 0; i < n; i++) 
-				scan->rs_shuffled_block_ids[i] = i;
+			Size page_size = PageGetPageSize(page); // default 8KB
+			scan->page_num_per_block = IOBigBlockSize / page_size; // 10MB / pageSize (8KB) = 1280 pages per io_block
+		
+			BlockNumber table_page_num = scan->rs_nblocks; // e.g., 10000
+			
+			bool drop_last = scan->drop_last;
+			scan->io_big_block_num = table_page_num / scan->page_num_per_block; // e.g., 10000 / 1280 = 7 % 1040, 12800 / 1280 = 10 % 0
+
+			if (!drop_last && table_page_num % scan->page_num_per_block > 0)
+				scan->io_big_block_num = scan->io_big_block_num + 1; // 7 -> 8
+
+			scan->rs_shuffled_block_ids = (BlockNumber *) palloc(sizeof(BlockNumber) * scan->io_big_block_num);
+			
+			// rs_shuffled_block_ids = [0, 1280, 2560, 3840, 5120, 6400, 7680, 8960]
+			// rs_shuffled_block_ids = [0, 1280, 2560, 3840, 5120, 6400, 7680, 8960, 10240, 11520]
+			for (BlockNumber i = 0; i < scan->io_big_block_num; i++) 
+				scan->rs_shuffled_block_ids[i] = i * scan->io_big_block_num;
 			
 			srand(time(0) + rand());
 
-			for (BlockNumber i = n - 1; i > 0; i--) {
+			// rs_shuffled_block_ids = [5120, 3840, 0, 6400, 8960, 1280, 2560, 5120, 7680]
+			for (BlockNumber i = scan->io_big_block_num - 1; i > 0; i--) {
 				BlockNumber r = rand() % (i + 1);
 				// swap(a + i, a + r);
 				BlockNumber t = scan->rs_shuffled_block_ids[i];
@@ -734,7 +749,7 @@ heapgettup_pagemode(HeapScanDesc scan,
 				scan->rs_shuffled_block_ids[r] = t;
 			}
 
-			BlockNumber index = scan->rs_current_index;
+			BlockNumber index = 0; // 0
 			scan->rs_startblock = scan->rs_shuffled_block_ids[index];
 			// Lijie: add end
 			
@@ -849,16 +864,26 @@ heapgettup_pagemode(HeapScanDesc scan,
 			page--;
 		}
 		else if (shuffle_order) {
-			scan->rs_current_index = scan->rs_current_index + 1;
-
-			if (scan->rs_current_index >= scan->rs_nblocks) {
-				finished = true;
-				page = 0;
+			// first increase the page id for current big block
+			// e.g., 1280 = 1279 + 1
+			page++;
+			// pageid = 1280, 2560, ... or achieve the total pages
+			if (page % scan->page_num_per_block == 0 || page >= scan->rs_nblocks) {
+				// rs_shuffled_block_ids = [5120, 3840, 0, 6400, 8960, 1280, 2560, 7680]
+				if (scan->shuffled_block_id_array_index < scan->io_big_block_num - 1) {
+					scan->shuffled_block_id_array_index = scan->shuffled_block_id_array_index + 1;
+					page = scan->rs_shuffled_block_ids[scan->shuffled_block_id_array_index];
+					finished = false;
+				}
+				else {
+					finished = true;
+					// page = 0;
+				}
 			}
 			else {
-				page = scan->rs_shuffled_block_ids[scan->rs_current_index];
 				finished = false;
 			}
+
 		}
 		else
 		{
@@ -1299,7 +1324,10 @@ heap_beginscan_internal(Relation relation, Snapshot snapshot,
 
 	// Lijie: add begin
 	scan->rs_shuffled_block_ids = NULL;
-	scan->rs_current_index = 0;
+	scan->shuffled_io_block_id_array_index = 0;
+	scan->page_index_per_block_id = 0;
+	scan->io_big_block_num = 0;
+	scan->page_num_per_block = 0;
 	// Lijie: add end
 
 	/*

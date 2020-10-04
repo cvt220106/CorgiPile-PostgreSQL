@@ -115,8 +115,6 @@
 #include "utils/sortsupport.h"
 #include "utils/tuplesort.h"
 
-#include <time.h>
-
 
 /* sort-type codes for sort__start probes */
 #define HEAP_SORT		0
@@ -500,139 +498,6 @@ static void readtup_datum(Tuplesortstate *state, SortTuple *stup,
 			  int tapenum, unsigned int len);
 static void reversedirection_datum(Tuplesortstate *state);
 static void free_sort_tuple(Tuplesortstate *state, SortTuple *stup);
-
-// Lijie: add begin
-static void shuffle_tuple(SortTuple *a, size_t n, Tuplesortstate *state);
-// Lijie: add end
-
-
-// Lijie: add begin
-// shuffle_tuple(state->memtuples, state->memtupcount, state);
-static void
-shuffle_tuple(SortTuple *a, size_t n, Tuplesortstate *state)
-{
-	srand(time(0) + rand());
-
-	CHECK_FOR_INTERRUPTS();
-	for (int i = n - 1; i > 0; i--) {
-		int r = rand() % (i + 1);
-		// swap(a + i, a + r);
-		SortTuple t = *(a + i);
-		*(a + i) = *(a + r);
-		*(a + r) = t;
-	}
-}
-
-double
-compute_loss(SortTuple* p, Model* model)
-{
-	double loss = (double) p->datum1;
-	return loss;
-}
-
-void 
-clear_tuplesort_state(Tuplesortstate* tuplesortstate)
-{
-	tuplesortstate->memtupcount = 0;
-}
-
-int
-compute_loss_and_update_model(Tuplesortstate* state, Model* model,
-							  int ith_tuple, int batch_size, bool last_tuple) 
-{
-	int n = state->memtupcount;
-	SortTuple* tuples = state->memtuples;
-	int last_updated = 0;
-	int i = 0;
-
-	for (SortTuple* p = tuples; p < tuples + n; p++) {
-		double tuple_loss = compute_loss(p, model);
-		model->loss = model->loss + tuple_loss;
-		elog(LOG, "[SVM][Tuple %d] >>> Add %.2f loss to model.", ith_tuple, tuple_loss);
-		ith_tuple = (ith_tuple + 1) % batch_size;
-		
-		// going to update model
-		if (ith_tuple == 0) {
-			// update model
-			model->p1 += 1;
-			model->p2 += 1;
-			elog(LOG, "[SVM] >>> Update model (p1 = %d, p2 = %d, loss = %.2f).", model->p1, model->p2, model->loss);
-			last_updated = i;
-		}
-		++i;
-
-	}
-
-	if (last_tuple) {
-		if (n > 0 && last_updated < n - 1) {
-			model->p1 += 1;
-			model->p2 += 1;
-			elog(LOG, "[SVM] >>> Last: Update model (p1 = %d, p2 = %d, loss = %.2f).", model->p1, model->p2, model->loss);
-		}
-		else {
-			elog(LOG, "[SVM] >>> Has updated the model.");
-		}
-	}
-
-	return ith_tuple;
-}
-
-// Lijie: add end
-// Lijie add begin
-bool
-puttuple_into_buffer(Tuplesortstate *state, SortTuple *tuple, bool last_tuple) {
-	switch (state->status)
-	{
-		case TSS_INITIAL:
-
-			/*
-			 * Save the tuple into the unsorted array.  First, grow the array
-			 * as needed.  Note that we try to grow the array when there is
-			 * still one free slot remaining --- if we fail, there'll still be
-			 * room to store the incoming tuple, and then we'll switch to
-			 * tape-based operation.
-			 */
-
-			if (last_tuple) {
-				// buffer is empty
-				if (state->memtupcount == 0)
-					return true;
-				else {
-					tuplesort_performshuffle(state);
-					return false;
-				}
-				
-			}
-			Assert(state->memtupcount < state->memtupsize);
-			state->memtuples[state->memtupcount++] = *tuple;
-			if (state->memtupcount == state->memtupsize) {
-				tuplesort_performshuffle(state);
-				// buffer is full and we have shuffled the buffered tuples
-				return true;
-			}
-			else
-				return false;
-			
-			/*
-			 * Check if it's time to switch over to a bounded heapsort. We do
-			 * so if the input tuple count exceeds twice the desired tuple
-			 * count (this is a heuristic for where heapsort becomes cheaper
-			 * than a quicksort), or if we've just filled workMem and have
-			 * enough tuples to meet the bound.
-			 *
-			 * Note that once we enter TSS_BOUNDED state we will always try to
-			 * complete the sort that way.  In the worst case, if later input
-			 * tuples are larger than earlier ones, this might cause us to
-			 * exceed workMem significantly.
-			 */
-
-		default:
-			elog(ERROR, "invalid tuplesort state");
-			return false;
-	}
-}
-
-// Lijie add end
 
 /*
  * Special versions of qsort just for SortTuple objects.  qsort_tuple() sorts
@@ -1137,40 +1002,6 @@ grow_memtuples(Tuplesortstate *state)
 }
 
 /*
- * Lijie: add begin
- * 
- * Accept one tuple while collecting input data for sort.
- *
- * Note that the input data is always copied; the caller need not save it.
- */
-bool
-my_tuplesort_puttupleslot(Tuplesortstate *state, TupleTableSlot *slot, bool last_tuple)
-{
-	if (last_tuple) {
-		bool is_buffer_full_and_shuffled = puttuple_into_buffer(state, NULL, last_tuple);
-		return is_buffer_full_and_shuffled;
-
-	}
-
-	MemoryContext oldcontext = MemoryContextSwitchTo(state->sortcontext);
-	SortTuple	stup;
-
-	/*
-	 * Copy the given tuple into memory we control, and decrease availMem.
-	 * Then call the common code.
-	 */
-	COPYTUP(state, &stup, (void *) slot);
-
-	bool is_buffer_full_and_shuffled = puttuple_into_buffer(state, &stup, last_tuple);
-
-	MemoryContextSwitchTo(oldcontext);
-	
-	return is_buffer_full_and_shuffled;
-}
-
-// Lijie: add end
-
-/*
  * Accept one tuple while collecting input data for sort.
  *
  * Note that the input data is always copied; the caller need not save it.
@@ -1269,8 +1100,6 @@ tuplesort_putdatum(Tuplesortstate *state, Datum val, bool isNull)
 
 	MemoryContextSwitchTo(oldcontext);
 }
-
-
 
 /*
  * Shared code for tuple and datum cases.
@@ -1470,7 +1299,7 @@ tuplesort_performsort(Tuplesortstate *state)
 			break;
 
 		default:
-			elog(ERROR, "");
+			elog(ERROR, "invalid tuplesort state");
 			break;
 	}
 
@@ -1486,85 +1315,6 @@ tuplesort_performsort(Tuplesortstate *state)
 				 pg_rusage_show(&state->ru_start));
 	}
 #endif
-
-	MemoryContextSwitchTo(oldcontext);
-}
-
-void
-tuplesort_performshuffle(Tuplesortstate *state)
-{
-	MemoryContext oldcontext = MemoryContextSwitchTo(state->sortcontext);
-
-	switch (state->status)
-	{
-		case TSS_INITIAL:
-
-			/*
-			 * We were able to accumulate all the tuples within the allowed
-			 * amount of memory.  Just qsort 'em and we're done.
-			 */
-			if (state->memtupcount > 1)
-			{
-				
-				/* Can we use the single-key sort function? */
-				/* modified by Lijie
-				if (state->onlyKey != NULL)
-					qsort_ssup(state->memtuples, state->memtupcount,
-							   state->onlyKey);
-				else
-					qsort_tuple(state->memtuples,
-								state->memtupcount,
-								state->comparetup,
-								state);
-				*/
-				shuffle_tuple(state->memtuples, state->memtupcount, state);
-			}
-			/*
-			state->current = 0;
-			state->eof_reached = false;
-			state->markpos_offset = 0;
-			state->markpos_eof = false;
-			state->status = TSS_SORTEDINMEM;
-			*/
-			break;
-
-		case TSS_BOUNDED:
-
-			/*
-			 * We were able to accumulate all the tuples required for output
-			 * in memory, using a heap to eliminate excess tuples.  Now we
-			 * have to transform the heap to a properly-sorted array.
-			 */
-			sort_bounded_heap(state);
-			state->current = 0;
-			state->eof_reached = false;
-			state->markpos_offset = 0;
-			state->markpos_eof = false;
-			state->status = TSS_SORTEDINMEM;
-			break;
-
-		case TSS_BUILDRUNS:
-
-			/*
-			 * Finish tape-based sort.  First, flush all tuples remaining in
-			 * memory out to tape; then merge until we have a single remaining
-			 * run (or, if !randomAccess, one run per tape). Note that
-			 * mergeruns sets the correct state->status.
-			 */
-			dumptuples(state, true);
-			mergeruns(state);
-			state->eof_reached = false;
-			state->markpos_block = 0L;
-			state->markpos_offset = 0;
-			state->markpos_eof = false;
-			break;
-
-		default:
-			elog(ERROR, "invalid tuplesort state");
-			break;
-	}
-
-
 
 	MemoryContextSwitchTo(oldcontext);
 }
@@ -3618,5 +3368,3 @@ free_sort_tuple(Tuplesortstate *state, SortTuple *stup)
 	FREEMEM(state, GetMemoryChunkSpace(stup->tuple));
 	pfree(stup->tuple);
 }
-
-

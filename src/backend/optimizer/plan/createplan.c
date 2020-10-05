@@ -4023,32 +4023,32 @@ make_sort_from_pathkeys(PlannerInfo *root, Plan *lefttree, List *pathkeys,
 }
 
 
-Sort *
-make_SGD_from_pathkeys(PlannerInfo *root, Plan *lefttree, List *pathkeys,
-						double limit_tuples)
-{
-	// int			numsortkeys;
-	AttrNumber *sortColIdx;
-	Oid		   *sortOperators;
-	Oid		   *collations;
-	bool	   *nullsFirst;
+// Sort *
+// make_SGD_from_pathkeys(PlannerInfo *root, Plan *lefttree, List *pathkeys,
+// 						double limit_tuples)
+// {
+// 	// int			numsortkeys;
+// 	AttrNumber *sortColIdx;
+// 	Oid		   *sortOperators;
+// 	Oid		   *collations;
+// 	bool	   *nullsFirst;
 
-	/* Compute sort column info, and adjust lefttree as needed */
-	lefttree = prepare_SGD_from_pathkeys(root, lefttree, pathkeys,
-										  NULL,
-										  NULL,
-										  false,
-										  &numsortkeys,
-										  &sortColIdx,
-										  &sortOperators,
-										  &collations,
-										  &nullsFirst);
+// 	/* Compute sort column info, and adjust lefttree as needed */
+// 	lefttree = prepare_SGD_from_pathkeys(root, lefttree, pathkeys,
+// 										  NULL,
+// 										  NULL,
+// 										  false,
+// 										  &numsortkeys,
+// 										  &sortColIdx,
+// 										  &sortOperators,
+// 										  &collations,
+// 										  &nullsFirst);
 
-	/* Now build the Sort node */
-	return make_SGD(root, lefttree, numsortkeys,
-					 sortColIdx, sortOperators, collations,
-					 nullsFirst, limit_tuples);
-}
+// 	/* Now build the Sort node */
+// 	return make_SGD(root, lefttree, numsortkeys,
+// 					 sortColIdx, sortOperators, collations,
+// 					 nullsFirst, limit_tuples);
+// }
 
 /*
  * make_sort_from_sortclauses

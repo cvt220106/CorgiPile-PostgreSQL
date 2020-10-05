@@ -1778,17 +1778,17 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 		}
 	}
 
-	if (parse->SGDClause)
-	{
-		if (!pathkeys_contained_in(root->SGD_pathkeys, current_pathkeys))
-		{
-			result_plan = (Plan *) make_SGD_from_pathkeys(root,
-														   result_plan,
-														 root->SGD_pathkeys,
-														   limit_tuples);
-			current_pathkeys = root->SGD_pathkeys;
-		}
-	}
+	// if (parse->SGDClause)
+	// {
+	// 	if (!pathkeys_contained_in(root->SGD_pathkeys, current_pathkeys))
+	// 	{
+	// 		result_plan = (Plan *) make_SGD_from_pathkeys(root,
+	// 													   result_plan,
+	// 													 root->SGD_pathkeys,
+	// 													   limit_tuples);
+	// 		current_pathkeys = root->SGD_pathkeys;
+	// 	}
+	// }
 
 	/*
 	 * If there is a FOR UPDATE/SHARE clause, add the LockRows node. (Note: we

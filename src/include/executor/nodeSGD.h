@@ -14,7 +14,7 @@ typedef struct Model {
 } Model;
 
 extern SGDState *ExecInitSGD(SGD *node, EState *estate, int eflags);
-extern TupleTableSlot *ExecSGD(SGDState *node, Model* model);
+extern TupleTableSlot *ExecSGD(SGDState *node);
 extern void ExecEndSGD(SGDState *node);
 extern void ExecSGDMarkPos(SGDState *node);
 extern void ExecSGDRestrPos(SGDState *node);

@@ -290,9 +290,14 @@ ExecInitNode(Plan *node, EState *estate, int eflags)
 												estate, eflags);
 			break;
 
+		// case T_Sort:
+		// 	result = (PlanState *) ExecInitSort((Sort *) node,
+		// 										estate, eflags);
+		// 	break;
+		
 		case T_Sort:
-			result = (PlanState *) ExecInitSort((Sort *) node,
-												estate, eflags);
+			result = (PlanState *) ExecInitSGD((SGD *) node,
+												   estate, eflags);
 			break;
 
 		case T_Group:
@@ -495,8 +500,12 @@ ExecProcNode(PlanState *node)
 			result = ExecShuffleSort((ShuffleSortState *) node);
 			break;
 
+		// case T_SortState:
+		// 	result = ExecSort((SortState *) node);
+		// 	break;
+
 		case T_SortState:
-			result = ExecSort((SortState *) node);
+			result = ExecSGD((SGDState *) node);
 			break;
 
 		case T_GroupState:
@@ -735,8 +744,12 @@ ExecEndNode(PlanState *node)
 			ExecEndMaterial((MaterialState *) node);
 			break;
 
+		// case T_SortState:
+		// 	ExecEndSort((SortState *) node);
+		// 	break;
+
 		case T_SortState:
-			ExecEndSort((SortState *) node);
+			ExecEndSGD((SGDState *) node);
 			break;
 
 		case T_GroupState:

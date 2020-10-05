@@ -152,6 +152,10 @@ ExecReScan(PlanState *node)
 			ExecReScanSeqScan((SeqScanState *) node);
 			break;
 
+		case T_ShuffleScanState:
+			ExecReScanShuffleScan((ShuffleScanState *) node);
+			break;
+
 		case T_IndexScanState:
 			ExecReScanIndexScan((IndexScanState *) node);
 			break;
@@ -212,8 +216,16 @@ ExecReScan(PlanState *node)
 			ExecReScanMaterial((MaterialState *) node);
 			break;
 
+		// case T_SortState:
+		// 	ExecReScanSort((SortState *) node);
+		// 	break;
+		
 		case T_SortState:
-			ExecReScanSort((SortState *) node);
+			ExecReSGD((SGDState *) node);
+			break;
+
+		case T_ShuffleSortState:
+			ExecReScanShuffleSort((ShuffleSortState *) node);
 			break;
 
 		case T_GroupState:
@@ -294,8 +306,12 @@ ExecMarkPos(PlanState *node)
 			ExecMaterialMarkPos((MaterialState *) node);
 			break;
 
+		// case T_SortState:
+		// 	ExecSortMarkPos((SortState *) node);
+		// 	break;
+
 		case T_SortState:
-			ExecSortMarkPos((SortState *) node);
+			ExecSGDMarkPos((SGDState *) node);
 			break;
 
 		case T_ResultState:

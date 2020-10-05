@@ -63,8 +63,16 @@ void ExecClearModel(Model* model) {
 SGDBatchState* init_SGDBatchState(int n_features) {
     SGDBatchState* batchstate = (SGDBatchState *) palloc0(sizeof(SGDBatchState));
     batchstate->gradients = (double *) palloc0(sizeof(double) * n_features);
+	for (int i = 0; i < n_features; i++)
+		batchstate->gradients[i] = 0;
     batchstate->loss = 0;
     return batchstate;
+}
+
+void clear_SGDBatchState(SGDBatchState* batchstate, int n_features) {
+	for (int i = 0; i < n_features; i++)
+		batchstate->gradients[i] = 0;
+    batchstate->loss = 0;
 }
 
 void free_SGDBatchState(SGDBatchState* batchstate) {
@@ -129,7 +137,7 @@ ExecInitSGD(SGD *node, EState *estate, int eflags)
     sgdstate->sgd_done = false;
 
     int n_features = 4;
-    // TODO: using malloc to allocate model later
+    
     sgdstate->model = init_model(n_features);
 	
 	elog(LOG, "[SVM] Initialize SVM model");
@@ -191,18 +199,18 @@ void perform_SGD(Model *model, TupleTableSlot *slot, SGDBatchState* batchstate, 
     }   
 }
 
+/*
 TupleTableSlot *
-ExecSGD(SGDState *node, Model* model)
+ExecSGD(SGDState *node)
 {
 
     // model <- 1 update (fetch all the tuples)
 
 	EState	   *estate;
 	TupleTableSlot *slot;
+	Model* model = node->model;
 
-	/*
-	 * get state info from node
-	 */
+	//get state info from node
 	SO1_printf("ExecSGD: %s\n",
 			   "entering routine");
 
@@ -210,11 +218,9 @@ ExecSGD(SGDState *node, Model* model)
 	
 	// tupleSGDState = (TupleSGDState *) node->tupleSGDState;
     SGDBatchState* batchstate = init_SGDBatchState(model->n_features);
-	/*
-	 * If first time through, read all tuples from outer plan and pass them to
-	 * tuplesort.c. Subsequent calls just fetch tuples from tuplesort.
-	 */
-    //for (n )
+	// If first time through, read all tuples from outer plan and pass them to
+	// tuplesort.c. Subsequent calls just fetch tuples from tuplesort.
+  
 	if (!node->sgd_done)
 	{
 		// ShuffleSort	   *plannode = (ShuffleSort *) node->ss.ps.plan;
@@ -224,10 +230,6 @@ ExecSGD(SGDState *node, Model* model)
 		SO1_printf("ExecSGD: %s\n",
 				   "SGD subplan");
 
-		/*
-		 * Want to scan subplan in the forward direction while creating the
-		 * sorted data.
-		 */
 		estate->es_direction = ForwardScanDirection;
 
 		// outerNode = ShuffleScanNode
@@ -269,21 +271,101 @@ ExecSGD(SGDState *node, Model* model)
 			 	
 		}
 
-		/*
-		 * restore to user specified direction
-		 */
         estate->es_direction = ForwardScanDirection;
-		/*
-		 * finally set the sorted flag to true
-		 */
+		
 		node->sgd_done = true;
 		SO1_printf("ExecSGD: %s\n", "Performing SGD done");
 	}
 
+	// Get the first or next tuple from tuplesort. Returns NULL if no more tuples.
+
+    // TODO: using ExecStoreMinimalTuple to genreate the result tuple
+    node->ps.ps_ResultTupleSlot; // = Model->w, => ExecStoreMinimalTuple();
+	slot = node->ps.ps_ResultTupleSlot;
+
+	// (void) tupleshufflesort_gettupleslot(tupleShuffleSortState,
+	// 							  ScanDirectionIsForward(dir),
+	// 							  slot);
+	return slot;
+}
+*/
+
+TupleTableSlot *
+ExecSGD(SGDState *node)
+{
+
+    // model <- 1 update (fetch all the tuples)
+
+	EState	   *estate;
+	TupleTableSlot *slot;
+	Model* model = node->model;
+
 	/*
-	 * Get the first or next tuple from tuplesort. Returns NULL if no more
-	 * tuples.
+	 * get state info from node
 	 */
+	SO1_printf("ExecSGD: %s\n",
+			   "entering routine");
+
+	estate = node->ps.state;
+	
+	// tupleSGDState = (TupleSGDState *) node->tupleSGDState;
+    SGDBatchState* batchstate = init_SGDBatchState(model->n_features);
+	/*
+	 * If first time through, read all tuples from outer plan and pass them to
+	 * tuplesort.c. Subsequent calls just fetch tuples from tuplesort.
+	 */
+    //for (n )
+	if (!node->sgd_done)
+	{
+		// ShuffleSort	   *plannode = (ShuffleSort *) node->ss.ps.plan;
+		PlanState  *outerNode;
+		TupleDesc	tupDesc;
+
+		SO1_printf("ExecSGD: %s\n",
+				   "SGD subplan");
+
+		estate->es_direction = ForwardScanDirection;
+
+		// outerNode = ShuffleScanNode
+		outerNode = outerPlanState(node);
+		tupDesc = ExecGetResultType(outerNode);
+                                              
+		// node->tupleShuffleSortState = (void *) tupleShuffleSortState;
+
+		int iter_num = model->iter_num;
+        
+		for (int i = 1; i <= iter_num; i++) {
+			int ith_tuple = 0;
+			while(true) {
+				slot = ExecProcNode(outerNode);
+
+				if (TupIsNull(slot)) {
+					if (i == iter_num) {
+						elog(LOG, "[Iteartion %d] Finalize the model.", i);
+						perform_SGD(node->model, NULL, batchstate, ith_tuple);
+                		// can also free_SGDBatchState in ExecEndSGD
+                		free_SGDBatchState(batchstate);
+						break;
+					}
+					else {
+						elog(LOG, "[Iteartion %d] Finish current iteration.", i);
+						perform_SGD(node->model, NULL, batchstate, ith_tuple);
+						clear_SGDBatchState(batchstate, model->n_features);
+						ExecReScan(outerNode);	
+						break;
+					}
+				}
+				perform_SGD(node->model, slot, batchstate, ith_tuple);
+            	ith_tuple = (ith_tuple + 1) % node->model->batch_size;
+			}
+		}
+		
+		node->sgd_done = true;
+		SO1_printf("ExecSGD: %s\n", "Performing SGD done");
+	}
+
+	// Get the first or next tuple from tuplesort. Returns NULL if no more tuples.
+
     // TODO: using ExecStoreMinimalTuple to genreate the result tuple
     node->ps.ps_ResultTupleSlot; // = Model->w, => ExecStoreMinimalTuple();
 	slot = node->ps.ps_ResultTupleSlot;
@@ -314,6 +396,11 @@ ExecEndSGD(SGDState *node)
 	ExecClearTuple(node->ps.ps_ResultTupleSlot);
 
 	ExecClearModel(node->model);
+
+	ExecEndNode(outerPlanState(node));
+
+	SO1_printf("ExecEndSGD: %s\n",
+			   "SGD node shutdown");
 }
 
 /* ----------------------------------------------------------------

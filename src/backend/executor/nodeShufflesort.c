@@ -290,7 +290,7 @@ ExecInitShuffleSort(ShuffleSort *node, EState *estate, int eflags)
  * ----------------------------------------------------------------
  */
 void
-ExecEndSort(ShuffleSortState *node)
+ExecEndShuffleSort(ShuffleSortState *node)
 {
 	SO1_printf("ExecEndShuffleSort: %s\n",
 			   "shutting down sort node");

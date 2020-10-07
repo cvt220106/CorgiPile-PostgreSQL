@@ -11,6 +11,7 @@ typedef struct Model {
     double learning_rate;
     double n_features;
     int iter_num;
+    int tuple_num;
 } Model;
 
 extern SGDState *ExecInitSGD(SGD *node, EState *estate, int eflags);

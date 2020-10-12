@@ -418,9 +418,61 @@ num_rows_processed | 15
 num_rows_skipped   | 0
 dep_var_mapping    | {f,t}
 */
+// TupleTableSlot* output_model_record(TupleTableSlot* slot, Model* model) {
+
+// 	int columns = 5;
+// 	TupleDesc tupdesc = CreateTemplateTupleDesc(columns, false);
+// 	TupleDescInitEntry(tupdesc, (AttrNumber) 1, "coef",
+// 					   FLOAT4ARRAYOID, -1, 0);
+// 	TupleDescInitEntry(tupdesc, (AttrNumber) 2, "loss",
+// 					   FLOAT4OID, -1, 0);
+// 	TupleDescInitEntry(tupdesc, (AttrNumber) 3, "gradient",
+// 					   FLOAT4OID, -1, 0);
+// 	TupleDescInitEntry(tupdesc, (AttrNumber) 4, "num_iterations",
+// 					   INT4OID, -1, 0);
+// 	TupleDescInitEntry(tupdesc, (AttrNumber) 5, "num_rows_processed",
+// 					   INT4OID, -1, 0);
+
+// 	Datum		values[columns];
+// 	bool		nulls[columns];
+
+// 	// coef: i.e., model-w
+// 	values[0] = build_float_array(model);
+// 	nulls[0] = false;
+
+// 	// loss
+// 	values[1] = Float4GetDatum(model->total_loss);
+// 	nulls[1] = false;
+// 	// norm of gradient
+// 	values[2] = Float4GetDatum(0);
+// 	nulls[2] = false;
+// 	// num_iterationss
+// 	values[3] = Int32GetDatum(model->iter_num);
+// 	nulls[3] = false;
+// 	// num_rows_processed
+// 	values[4] = Int32GetDatum(model->tuple_num);
+// 	nulls[4] = false;
+
+// 	MinimalTuple mtuple = heap_form_minimal_tuple(tupdesc, values, nulls);
+// 	bool should_free = true;
+// 	slot = ExecStoreMinimalTuple(mtuple, slot, should_free);
+// 	return slot;
+// }
+
+/*
+SVM output record from MADLib
+-[ RECORD 1 ]------+--------------------------------------------------------------------------------
+coef               | {0.103994021495116,-0.00288252192097756,0.0540748706580464,0.00131729978010033}
+loss               | 0.928463796644648
+norm_of_gradient   | 7849.34910604307
+num_iterations     | 100
+num_rows_processed | 15
+num_rows_skipped   | 0
+dep_var_mapping    | {f,t}
+*/
 TupleTableSlot* output_model_record(TupleTableSlot* slot, Model* model) {
 
-	int columns = 5;
+    int columns = 5;
 	TupleDesc tupdesc = CreateTemplateTupleDesc(columns, false);
 	TupleDescInitEntry(tupdesc, (AttrNumber) 1, "coef",
 					   FLOAT4ARRAYOID, -1, 0);
@@ -433,10 +485,10 @@ TupleTableSlot* output_model_record(TupleTableSlot* slot, Model* model) {
 	TupleDescInitEntry(tupdesc, (AttrNumber) 5, "num_rows_processed",
 					   INT4OID, -1, 0);
 
-	Datum		values[columns];
-	bool		nulls[columns];
+    Datum       values[columns];
+    bool        nulls[columns];
 
-	// coef: i.e., model-w
+    	// coef: i.e., model->w
 	values[0] = build_float_array(model);
 	nulls[0] = false;
 
@@ -452,13 +504,19 @@ TupleTableSlot* output_model_record(TupleTableSlot* slot, Model* model) {
 	// num_rows_processed
 	values[4] = Int32GetDatum(model->tuple_num);
 	nulls[4] = false;
+    
+	/* make sure the slot is clear */
+	
+	ExecSetSlotDescriptor(slot, tupdesc);
+	/* insert data */
+	memcpy(slot->tts_values, values, columns * sizeof(Datum));
+	memcpy(slot->tts_isnull, nulls, columns * sizeof(bool));
+	
+	/* mark slot as containing a virtual tuple */
+	ExecStoreVirtualTuple(slot);
 
-	MinimalTuple mtuple = heap_form_minimal_tuple(tupdesc, values, nulls);
-	bool should_free = true;
-	slot = ExecStoreMinimalTuple(mtuple, slot, should_free);
-	return slot;
+    return slot;
 }
-
 
 
 

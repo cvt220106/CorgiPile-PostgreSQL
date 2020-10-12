@@ -754,8 +754,9 @@ getAnotherTuple(PGconn *conn, int msgLength)
 
 	if (tupnfields != nfields)
 	{
-		errmsg = libpq_gettext("unexpected field count in \"D\" message");
-		goto advance_and_error;
+		nfields = tupnfields;
+		// errmsg = libpq_gettext("unexpected field count in \"D\" message");
+		// goto advance_and_error;
 	}
 
 	/* Resize row buffer if needed */

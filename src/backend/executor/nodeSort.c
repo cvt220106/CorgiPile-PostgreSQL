@@ -20,6 +20,9 @@
 #include "miscadmin.h"
 #include "utils/tuplesort.h"
 
+#include "catalog/pg_type.h"
+#include "utils/array.h"
+
 
 /* ----------------------------------------------------------------
  *		ExecSort
@@ -35,6 +38,87 @@
  *		  -- the outer child is prepared to return the first tuple.
  * ----------------------------------------------------------------
  */
+
+static Datum
+build_float_array()
+{
+	Datum	   *tmp_ary;
+	ArrayType  *result;
+	int			i;
+	int num_params = 4;
+
+	tmp_ary = (Datum *) palloc(num_params * sizeof(Datum));
+
+	for (i = 0; i < num_params; i++)
+		tmp_ary[i] = Float4GetDatum(i);
+
+	result = construct_array(tmp_ary, num_params, FLOAT4OID, 4, true, 'i');
+	return PointerGetDatum(result);
+}
+
+
+TupleTableSlot* output_model_record(TupleTableSlot* slot) {
+
+    int columns = 5;
+    TupleDesc tupdesc = CreateTemplateTupleDesc(columns, false);
+    TupleDescInitEntry(tupdesc, (AttrNumber) 1, "coef",
+                       FLOAT4ARRAYOID, -1, 0);
+	// TupleDescInitEntry(tupdesc, (AttrNumber) 1, "coef",
+    //                    FLOAT4OID, -1, 0);
+    TupleDescInitEntry(tupdesc, (AttrNumber) 2, "loss",
+                       FLOAT4OID, -1, 0);
+    TupleDescInitEntry(tupdesc, (AttrNumber) 3, "gradient",
+                       FLOAT4OID, -1, 0);
+    TupleDescInitEntry(tupdesc, (AttrNumber) 4, "num_iterations",
+                       INT4OID, -1, 0);
+    TupleDescInitEntry(tupdesc, (AttrNumber) 5, "num_rows_processed",
+                       INT4OID, -1, 0);
+
+    Datum       values[columns];
+    bool        nulls[columns];
+
+    // coef: i.e., model-w
+    values[0] = build_float_array();
+	// values[0] = Float4GetDatum(0.000001);
+    nulls[0] = false;
+
+    // loss
+    values[1] = Float4GetDatum(0.000005);
+    nulls[1] = false;
+    // norm of gradient
+    values[2] = Float4GetDatum(0);
+    nulls[2] = false;
+    // num_iterationss
+    values[3] = Int32GetDatum(100);
+    nulls[3] = false;
+    // num_rows_processed
+    values[4] = Int32GetDatum(20);
+    nulls[4] = false;
+
+    // MinimalTuple mtuple = (MinimalTuple) heap_form_tuple(tupdesc, values, nulls);
+    // bool should_free = true;
+    // slot = ExecStoreMinimalTuple(mtuple, slot, should_free);
+    // return slot;
+
+	// HeapTuple tuple = heap_form_tuple(tupdesc, values, nulls);
+    // bool should_free = true;
+	// slot->tts_tupleDescriptor = tupdesc;
+	// slot = ExecStoreTuple(tuple, slot, InvalidBuffer, should_free);
+    
+	/* make sure the slot is clear */
+	
+	ExecSetSlotDescriptor(slot, tupdesc);
+	/* insert data */
+	memcpy(slot->tts_values, values, columns * sizeof(Datum));
+	memcpy(slot->tts_isnull, nulls, columns * sizeof(bool));
+	
+	/* mark slot as containing a virtual tuple */
+	ExecStoreVirtualTuple(slot);
+
+    return slot;
+}
+
+
 TupleTableSlot *
 ExecSort(SortState *node)
 {
@@ -57,6 +141,9 @@ ExecSort(SortState *node)
 	 * If first time through, read all tuples from outer plan and pass them to
 	 * tuplesort.c. Subsequent calls just fetch tuples from tuplesort.
 	 */
+
+	if (node->sort_Done)
+		return NULL;
 
 	if (!node->sort_Done)
 	{
@@ -104,14 +191,8 @@ ExecSort(SortState *node)
 		{
 			slot = ExecProcNode(outerNode);
 
-			if (TupIsNull(slot)) {
-				if (i == 0) {
-					ExecReScan(outerNode);
-					i++;
-				}
-				else
-					break;
-			}
+			if (TupIsNull(slot))
+				break;
 				
 			else
 				tuplesort_puttupleslot(tuplesortstate, slot);
@@ -144,9 +225,14 @@ ExecSort(SortState *node)
 	 * tuples.
 	 */
 	slot = node->ss.ps.ps_ResultTupleSlot;
+	/* original code
 	(void) tuplesort_gettupleslot(tuplesortstate,
 								  ScanDirectionIsForward(dir),
 								  slot);
+	*/
+
+	slot = output_model_record(slot);
+
 	return slot;
 }
 

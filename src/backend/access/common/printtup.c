@@ -248,9 +248,60 @@ SendRowDescriptionMessage(TupleDesc typeinfo, List *targetlist, int16 *formats)
 /*
  * Get the lookup info that printtup() needs
  */
+// static void
+// printtup_prepare_info(DR_printtup *myState, TupleDesc typeinfo, int numAttrs)
+// {
+// 	myState->portal->tupDesc = typeinfo;
+// 	int16	   *formats = myState->portal->formats;
+// 	int			i;
+
+// 	/* get rid of any old data */
+// 	if (myState->myinfo)
+// 		pfree(myState->myinfo);
+// 	myState->myinfo = NULL;
+
+// 	myState->attrinfo = typeinfo;
+// 	myState->nattrs = numAttrs;
+// 	if (numAttrs <= 0)
+// 		return;
+
+// 	myState->myinfo = (PrinttupAttrInfo *)
+// 		palloc0(numAttrs * sizeof(PrinttupAttrInfo));
+
+// 	for (i = 0; i < numAttrs; i++)
+// 	{
+// 		PrinttupAttrInfo *thisState = myState->myinfo + i;
+// 		int16		format = (formats ? formats[i] : 0);
+
+// 		thisState->format = format;
+// 		if (format == 0)
+// 		{
+// 			getTypeOutputInfo(typeinfo->attrs[i]->atttypid,
+// 							  &thisState->typoutput,
+// 							  &thisState->typisvarlena);
+// 			fmgr_info(thisState->typoutput, &thisState->finfo);
+// 		}
+// 		else if (format == 1)
+// 		{
+// 			getTypeBinaryOutputInfo(typeinfo->attrs[i]->atttypid,
+// 									&thisState->typsend,
+// 									&thisState->typisvarlena);
+// 			fmgr_info(thisState->typsend, &thisState->finfo);
+// 		}
+// 		else
+// 			ereport(ERROR,
+// 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+// 					 errmsg("unsupported format code: %d", format)));
+// 	}
+// }
+
+/*
+ * Get the lookup info that printtup() needs
+ */
 static void
 printtup_prepare_info(DR_printtup *myState, TupleDesc typeinfo, int numAttrs)
 {
+	myState->portal->tupDesc = typeinfo;
 	int16	   *formats = myState->portal->formats;
 	int			i;
 
@@ -270,7 +321,7 @@ printtup_prepare_info(DR_printtup *myState, TupleDesc typeinfo, int numAttrs)
 	for (i = 0; i < numAttrs; i++)
 	{
 		PrinttupAttrInfo *thisState = myState->myinfo + i;
-		int16		format = (formats ? formats[i] : 0);
+		int16		format = 0; // (formats ? formats[i] : 0);
 
 		thisState->format = format;
 		if (format == 0)
@@ -293,6 +344,55 @@ printtup_prepare_info(DR_printtup *myState, TupleDesc typeinfo, int numAttrs)
 					 errmsg("unsupported format code: %d", format)));
 	}
 }
+
+/*
+ * Get the lookup info that printtup() needs
+ */
+// static void
+// printtup_prepare_info(DR_printtup *myState, TupleDesc typeinfo, int numAttrs)
+// {
+// 	int16	   *formats = myState->portal->formats;
+// 	int			i;
+
+// 	/* get rid of any old data */
+// 	if (myState->myinfo)
+// 		pfree(myState->myinfo);
+// 	myState->myinfo = NULL;
+
+// 	myState->attrinfo = typeinfo;
+// 	myState->nattrs = numAttrs;
+// 	if (numAttrs <= 0)
+// 		return;
+
+// 	myState->myinfo = (PrinttupAttrInfo *)
+// 		palloc0(numAttrs * sizeof(PrinttupAttrInfo));
+
+// 	for (i = 0; i < numAttrs; i++)
+// 	{
+// 		PrinttupAttrInfo *thisState = myState->myinfo + i;
+// 		int16		format = (formats ? formats[i] : 0);
+
+// 		thisState->format = format;
+// 		if (format == 0)
+// 		{
+// 			getTypeOutputInfo(typeinfo->attrs[i]->atttypid,
+// 							  &thisState->typoutput,
+// 							  &thisState->typisvarlena);
+// 			fmgr_info(thisState->typoutput, &thisState->finfo);
+// 		}
+// 		else if (format == 1)
+// 		{
+// 			getTypeBinaryOutputInfo(typeinfo->attrs[i]->atttypid,
+// 									&thisState->typsend,
+// 									&thisState->typisvarlena);
+// 			fmgr_info(thisState->typsend, &thisState->finfo);
+// 		}
+// 		else
+// 			ereport(ERROR,
+// 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+// 					 errmsg("unsupported format code: %d", format)));
+// 	}
+// }
 
 /* ----------------
  *		printtup --- print a tuple in protocol 3.0

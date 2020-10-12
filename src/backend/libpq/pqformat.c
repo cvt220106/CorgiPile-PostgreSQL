@@ -147,7 +147,7 @@ pq_sendcountedtext(StringInfo buf, const char *str, int slen,
 		appendBinaryStringInfo(buf, str, slen);
 	}
 }
-
+	
 /* --------------------------------
  *		pq_sendtext		- append a text string (with conversion)
  *

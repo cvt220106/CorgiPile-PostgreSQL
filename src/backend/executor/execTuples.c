@@ -393,7 +393,7 @@ TupleTableSlot *
 ExecStoreMinimalTuple(MinimalTuple mtup,
 					  TupleTableSlot *slot,
 					  bool shouldFree)
-{
+{	
 	/*
 	 * sanity checks
 	 */

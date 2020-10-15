@@ -397,10 +397,6 @@ ExecSGD(SGDState *node)
 
 	slot = output_model_record(node->ps.ps_ResultTupleSlot, model);
 
-	
-	// (void) tupleshufflesort_gettupleslot(tupleShuffleSortState,
-	// 							  ScanDirectionIsForward(dir),
-	// 							  slot);
 	return slot;
 }
 
@@ -582,7 +578,8 @@ ExecEndSGD(SGDState *node)
 void
 ExecReScanSGD(SGDState *node)
 {
-	ExecScanReScan((ScanState *) node);
+	//TODO: handle ReScanSGD node
+	// ExecScanReScan((ScanState *) node);
 }
 
 /* ----------------------------------------------------------------
@@ -592,11 +589,12 @@ ExecReScanSGD(SGDState *node)
  * ----------------------------------------------------------------
  */
 void
-ExecSeqMarkPos(SeqScanState *node)
+ExecSeqMarkPos(SGDState *node)
 {
-	HeapScanDesc scan = node->ss_currentScanDesc;
+	//TODO: handle ExecSeqMarkPos node
+	// HeapScanDesc scan = node->ss_currentScanDesc;
 
-	heap_markpos(scan);
+	// heap_markpos(scan);
 }
 
 /* ----------------------------------------------------------------
@@ -606,9 +604,10 @@ ExecSeqMarkPos(SeqScanState *node)
  * ----------------------------------------------------------------
  */
 void
-ExecSeqRestrPos(SeqScanState *node)
+ExecSeqRestrPos(SGDState *node)
 {
-	HeapScanDesc scan = node->ss_currentScanDesc;
+	//TODO: handle ExecSeqRestrPos node
+	// HeapScanDesc scan = node->ss_currentScanDesc;
 
 	/*
 	 * Clear any reference to the previously returned tuple.  This is needed
@@ -616,9 +615,9 @@ ExecSeqRestrPos(SeqScanState *node)
 	 * heap_restrpos will change; we'd have an internally inconsistent slot if
 	 * we didn't do this.
 	 */
-	ExecClearTuple(node->ss_ScanTupleSlot);
+	// ExecClearTuple(node->ss_ScanTupleSlot);
 
-	heap_restrpos(scan);
+	// heap_restrpos(scan);
 }
 
 
@@ -629,12 +628,15 @@ ExecSeqRestrPos(SeqScanState *node)
 void
 ExecResultMarkPos(ResultState *node)
 {
+	// TODO: to implement
+	/*
 	PlanState  *outerPlan = outerPlanState(node);
 
 	if (outerPlan != NULL)
 		ExecMarkPos(outerPlan);
 	else
 		elog(DEBUG2, "Result nodes do not support mark/restore");
+	*/
 }
 
 /* ----------------------------------------------------------------
@@ -644,12 +646,15 @@ ExecResultMarkPos(ResultState *node)
 void
 ExecResultRestrPos(ResultState *node)
 {
+	// TODO: to implement
+	/*
 	PlanState  *outerPlan = outerPlanState(node);
 
 	if (outerPlan != NULL)
 		ExecRestrPos(outerPlan);
 	else
 		elog(ERROR, "Result nodes do not support mark/restore");
+	*/
 }
 
 // int

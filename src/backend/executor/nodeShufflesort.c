@@ -302,7 +302,7 @@ ExecEndShuffleSort(ShuffleSortState *node)
 	/* must drop pointer to sort result tuple */
 	ExecClearTuple(node->ss.ps.ps_ResultTupleSlot);
 
-	clear_buffer(tupleShuffleSortState);
+	clear_buffer(node->tupleShuffleSortState);
 
 	/*
 	 * Release tuplesort resources

@@ -1324,8 +1324,7 @@ heap_beginscan_internal(Relation relation, Snapshot snapshot,
 
 	// Lijie: add begin
 	scan->rs_shuffled_block_ids = NULL;
-	scan->shuffled_io_block_id_array_index = 0;
-	scan->page_index_per_block_id = 0;
+	scan->shuffled_block_id_array_index = 0;
 	scan->io_big_block_num = 0;
 	scan->page_num_per_block = 0;
 	// Lijie: add end

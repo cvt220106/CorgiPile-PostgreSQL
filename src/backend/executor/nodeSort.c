@@ -58,6 +58,7 @@ Model* init_model(int n_features) {
     model->learning_rate = 0.01;
     model->n_features = n_features;
 	model->tuple_num = 0;
+	model->iter_num = 5;
 
     
 	model->w = (double *) palloc0(sizeof(double) * n_features);

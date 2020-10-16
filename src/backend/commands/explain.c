@@ -1207,8 +1207,8 @@ ExplainNode(PlanState *planstate, List *ancestors,
 										   planstate, es);
 			break;
 		case T_Sort:
-			show_sort_keys((SortState *) planstate, ancestors, es);
-			show_sort_info((SortState *) planstate, es);
+			// show_sort_keys((SortState *) planstate, ancestors, es);
+			// show_sort_info((SortState *) planstate, es);
 			break;
 		case T_MergeAppend:
 			show_merge_append_keys((MergeAppendState *) planstate,
@@ -1548,11 +1548,11 @@ show_upper_qual(List *qual, const char *qlabel,
 static void
 show_sort_keys(SortState *sortstate, List *ancestors, ExplainState *es)
 {
-	Sort	   *plan = (Sort *) sortstate->ss.ps.plan;
+	// Sort	   *plan = (Sort *) sortstate->ss.ps.plan;
 
-	show_sort_keys_common((PlanState *) sortstate,
-						  plan->numCols, plan->sortColIdx,
-						  ancestors, es);
+	// show_sort_keys_common((PlanState *) sortstate,
+	// 					  plan->numCols, plan->sortColIdx,
+	// 					  ancestors, es);
 }
 
 /*
@@ -1613,30 +1613,30 @@ show_sort_keys_common(PlanState *planstate, int nkeys, AttrNumber *keycols,
 static void
 show_sort_info(SortState *sortstate, ExplainState *es)
 {
-	Assert(IsA(sortstate, SortState));
-	if (es->analyze && sortstate->sort_Done &&
-		sortstate->tuplesortstate != NULL)
-	{
-		Tuplesortstate *state = (Tuplesortstate *) sortstate->tuplesortstate;
-		const char *sortMethod;
-		const char *spaceType;
-		long		spaceUsed;
+	// Assert(IsA(sortstate, SortState));
+	// if (es->analyze && sortstate->sort_Done &&
+	// 	sortstate->tuplesortstate != NULL)
+	// {
+	// 	Tuplesortstate *state = (Tuplesortstate *) sortstate->tuplesortstate;
+	// 	const char *sortMethod;
+	// 	const char *spaceType;
+	// 	long		spaceUsed;
 
-		tuplesort_get_stats(state, &sortMethod, &spaceType, &spaceUsed);
+	// 	tuplesort_get_stats(state, &sortMethod, &spaceType, &spaceUsed);
 
-		if (es->format == EXPLAIN_FORMAT_TEXT)
-		{
-			appendStringInfoSpaces(es->str, es->indent * 2);
-			appendStringInfo(es->str, "Sort Method: %s  %s: %ldkB\n",
-							 sortMethod, spaceType, spaceUsed);
-		}
-		else
-		{
-			ExplainPropertyText("Sort Method", sortMethod, es);
-			ExplainPropertyLong("Sort Space Used", spaceUsed, es);
-			ExplainPropertyText("Sort Space Type", spaceType, es);
-		}
-	}
+	// 	if (es->format == EXPLAIN_FORMAT_TEXT)
+	// 	{
+	// 		appendStringInfoSpaces(es->str, es->indent * 2);
+	// 		appendStringInfo(es->str, "Sort Method: %s  %s: %ldkB\n",
+	// 						 sortMethod, spaceType, spaceUsed);
+	// 	}
+	// 	else
+	// 	{
+	// 		ExplainPropertyText("Sort Method", sortMethod, es);
+	// 		ExplainPropertyLong("Sort Space Used", spaceUsed, es);
+	// 		ExplainPropertyText("Sort Space Type", spaceType, es);
+	// 	}
+	// }
 }
 
 /*

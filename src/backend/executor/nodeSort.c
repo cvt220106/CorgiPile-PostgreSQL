@@ -19,7 +19,247 @@
 #include "executor/nodeSort.h"
 #include "miscadmin.h"
 #include "utils/tuplesort.h"
+#include "utils/array.h"
 
+
+typedef struct SGDBatchState
+{
+	double*		gradients;	  /* sum the gradient of each tuple in a batch, n_dim */		
+    double		loss;	      /* sum the loss of each tuple in a batch */		
+} SGDBatchState;
+
+
+typedef struct SGDTuple
+{
+	double*	 features;		/* features of a tuple, n_dim */	
+    int		 class_label;	/* the class label of a tuple, -1 if there is not any label */
+	// int			tupindex;		/* the ith-tuple */
+} SGDTuple;
+
+typedef struct SGDTupleDesc
+{ 
+	// e.g., features = [0.1, 0, 0.2, 0, 0, 0.3, 0, 0], class_label = -1
+	// Tuple = {10, {0, 2, 5}, {0.1, 0.2, 0.3}, -1}
+	int k_col; // 1 // just for sparse dataset, if dense, only v_col is used.
+	int v_col; // 2
+	int label_col; // 3
+	int n_features;  // 8
+	
+	Datum* values;
+	bool* isnulls;
+} SGDTupleDesc;
+
+
+Model* init_model(int n_features) {
+    Model* model = (Model *) palloc0(sizeof(Model));
+
+	model->total_loss = 0;
+    model->batch_size = 100;
+    model->learning_rate = 0.01;
+    model->n_features = n_features;
+	model->tuple_num = 0;
+
+    
+	model->w = (double *) palloc0(sizeof(double) * n_features);
+
+    for (int i = 0; i < n_features; i++) {
+        // model->gradient[i] = 0;
+        model->w[i] = 0;
+    }
+
+    return model;
+}
+
+void ExecClearModel(Model* model) {
+    // free(model->gradient);
+	pfree(model->w);
+    pfree(model);
+}
+
+SGDBatchState* init_SGDBatchState(int n_features) {
+    SGDBatchState* batchstate = (SGDBatchState *) palloc0(sizeof(SGDBatchState));
+    batchstate->gradients = (double *) palloc0(sizeof(double) * n_features);
+	for (int i = 0; i < n_features; i++)
+		batchstate->gradients[i] = 0;
+    batchstate->loss = 0;
+    return batchstate;
+}
+
+SGDTupleDesc* init_SGDTuple(int n_features) {
+    SGDTuple* sgd_tuple = (SGDTuple *) palloc0(sizeof(SGDTuple));
+    sgd_tuple->features = (double *) palloc0(sizeof(double) * n_features);
+    return sgd_tuple;
+}
+
+SGDTupleDesc* init_SGDTupleDesc(int col_num, int n_features) {
+    SGDTupleDesc* sgd_tupledesc = (SGDTupleDesc *) palloc0(sizeof(SGDTupleDesc));
+
+    sgd_tupledesc->values = (Datum *) palloc0(sizeof(Datum) * col_num);
+	sgd_tupledesc->isnulls = (bool *) palloc0(sizeof(bool) * col_num);
+
+	// just for dblife: 
+	/*
+	CREATE TABLE dblife (
+	did serial,
+	k integer[],
+	v double precision[],
+	label integer);
+	*/
+	sgd_tupledesc->k_col = 1;
+	sgd_tupledesc->v_col = 2;
+	sgd_tupledesc->label_col = 3;
+
+    return sgd_tupledesc;
+}
+
+void clear_SGDBatchState(SGDBatchState* batchstate, int n_features) {
+	for (int i = 0; i < n_features; i++)
+		batchstate->gradients[i] = 0;
+    batchstate->loss = 0;
+}
+
+void free_SGDBatchState(SGDBatchState* batchstate) {
+    pfree(batchstate->gradients);
+    pfree(batchstate);
+}
+
+void free_SGDTuple(SGDTuple* sgd_tuple) {
+    pfree(sgd_tuple->features);
+    pfree(sgd_tuple);
+}
+
+void free_SGDTupleDesc(SGDTupleDesc* sgd_tupledesc) {
+    pfree(sgd_tupledesc->values);
+    pfree(sgd_tupledesc->isnulls);
+	pfree(sgd_tupledesc);
+}
+
+
+void
+compute_tuple_gradient_loss(SGDTuple* tp, Model* model, SGDBatchState* batchstate)
+{
+    double y = tp->class_label;
+    double* x = tp->features;
+
+    int n = model->n_features;
+
+    double loss = 0;
+    double grad[n];
+
+    // compute gradients of the incoming tuple
+    double wx = 0;
+    for (int i = 0; i < n; i++)
+        wx = wx + model->w[i] * x[i];
+    double ywx = y * wx;
+    if (ywx < 1) {
+        for (int i = 0; i < n; i++)
+            grad[i] = -y * x[i];
+    }
+    else {
+        for (int i = 0; i < n; i++) 
+            grad[i] = 0;
+    }
+
+    // Add this tuple's gradient to the previous gradients in this batch
+    for (int i = 0; i < n; i++) 
+        batchstate->gradients[i] += grad[i];
+
+    // compute the loss of the incoming tuple
+    double tuple_loss = 1 - ywx;
+    if (tuple_loss < 0)
+        tuple_loss = 0;
+    batchstate->loss += tuple_loss;
+}
+
+void update_model(Model* model, SGDBatchState* batchstate) {
+
+    // add graidents to the model and clear the batch gradients
+    for (int i = 0; i < model->n_features; i++) {
+        model->w[i] = model->w[i] + model->learning_rate * batchstate->gradients[i];
+        batchstate->gradients[i] = 0;
+    }
+
+    model->total_loss = model->total_loss + batchstate->loss;
+    batchstate->loss = 0;
+}
+
+
+void perform_SGD(Model *model, SGDTuple* sgd_tuple, SGDBatchState* batchstate, int i) {
+    if (sgd_tuple == NULL) /* slot == NULL means the end of the table. */
+        update_model(model, batchstate);
+    else {
+        // add the batch's gradients to the model, and reset the batch's gradients.
+        compute_tuple_gradient_loss(sgd_tuple, model, batchstate);
+        if (i == model->batch_size - 1) 
+            update_model(model, batchstate);
+        
+    }   
+}
+
+
+// Extract features and class label from Tuple
+void
+transfer_slot_to_sgd_tuple(
+	TupleTableSlot* slot, 
+	SGDTuple* sgd_tuple, 
+	SGDTupleDesc* sgd_tupledesc) {
+
+	// store the values of slot to values/isnulls arrays
+	/* slot => Datum values/isnulls */
+	heap_deform_tuple(slot, slot->tts_tupleDescriptor, sgd_tupledesc->values, sgd_tupledesc->isnulls);
+	// DatumGetInt32
+	// tupleDesc->attrs[0]->atttypid
+
+	int k_col = sgd_tupledesc->k_col;
+	int v_col = sgd_tupledesc->v_col;
+	int label_col = sgd_tupledesc->label_col;
+
+	/* Datum => double/int */
+	// e.g., features = [0.1, 0, 0.2, 0, 0, 0.3, 0, 0], class_label = -1
+	// Tuple = {10, {0, 2, 5}, {0.1, 0.2, 0.3}, -1}
+	Datum v_dat = sgd_tupledesc->values[v_col]; // Datum{0.1, 0.2, 0.3}
+	Datum label_dat = sgd_tupledesc->values[label_col]; // Datum{-1}
+
+
+	/* feature datum arrary => double* v */
+	ArrayType  *v_array = DatumGetArrayTypeP(v_dat);
+	//Assert(ARR_ELEMTYPE(array) == FLOAT4OID);
+	int	v_num = ArrayGetNItems(ARR_NDIM(v_array), ARR_DIMS(v_array));
+	double *v = (double *) ARR_DATA_PTR(v_array);
+
+	/* label dataum => int class_label */
+	int label = DatumGetInt32(label_dat);
+	sgd_tuple->class_label = label;
+
+
+	/* double* v => double* features */
+	double* features = sgd_tuple->features;
+	int n_features = sgd_tupledesc->n_features;
+	// if sparse dataset
+	if (k_col >= 0) {
+		/* k Datum array => int* k */
+		Datum k_dat = sgd_tupledesc->values[k_col]; // Datum{0, 2, 5}
+		ArrayType  *k_array = DatumGetArrayTypeP(k_array);
+		int	k_num = ArrayGetNItems(ARR_NDIM(k_array), ARR_DIMS(k_array));
+		int *k = (int *) ARR_DATA_PTR(k_array);
+
+		// TODO: change to memset()
+		for (int i = 0; i < n_features; i++) {
+			features[i] = 0;
+		}
+
+		for (int i = 0; i < k_num; i++) {
+			int f_index = k[i]; // {0, 2, 5}, k[1] = 2
+			features[f_index] = v[i]; // {0.1, 0.2, 0.3}, features[2] = 0.2
+		}
+	}
+	else {
+		Assert(n_features == v_num);
+		for (int i = 0; i < v_num; i++) {
+			features[i] = v[i];
+		}
+	}
+}
 
 /* ----------------------------------------------------------------
  *		ExecSort
@@ -39,105 +279,96 @@ TupleTableSlot *
 ExecSort(SortState *node)
 {
 	EState	   *estate;
-	ScanDirection dir;
-	Tuplesortstate *tuplesortstate;
 	TupleTableSlot *slot;
+	Model* model = node->model;
 
 	/*
 	 * get state info from node
 	 */
-	SO1_printf("ExecSort: %s\n",
-			   "entering routine");
+	SO1_printf("ExecSGD: %s\n", "entering routine");
 
-	estate = node->ss.ps.state;
-	dir = estate->es_direction;
-	tuplesortstate = (Tuplesortstate *) node->tuplesortstate;
+	estate = node->ps.state;
+	
+	// tupleSGDState = (TupleSGDState *) node->tupleSGDState;
 
 	/*
 	 * If first time through, read all tuples from outer plan and pass them to
 	 * tuplesort.c. Subsequent calls just fetch tuples from tuplesort.
 	 */
-
-	if (!node->sort_Done)
+	if (!node->sgd_done)
 	{
-		Sort	   *plannode = (Sort *) node->ss.ps.plan;
+		SGDBatchState* batchstate = init_SGDBatchState(model->n_features);
+		SGDTuple* sgd_tuple = init_SGDTuple(model->n_features);
+		//Datum values[model->n_features + model-> slot->]
+		// ShuffleSort	   *plannode = (ShuffleSort *) node->ss.ps.plan;
 		PlanState  *outerNode;
 		TupleDesc	tupDesc;
 
-		SO1_printf("ExecSort: %s\n",
-				   "sorting subplan");
+		SO1_printf("ExecSGD: %s\n", "SGD iteration ");
 
-		/*
-		 * Want to scan subplan in the forward direction while creating the
-		 * sorted data.
-		 */
 		estate->es_direction = ForwardScanDirection;
 
-		/*
-		 * Initialize tuplesort module.
-		 */
-		SO1_printf("ExecSort: %s\n",
-				   "calling tuplesort_begin");
-
+		// outerNode = ShuffleSortNode
 		outerNode = outerPlanState(node);
+		// tupDesc is the TupleDesc of the previous node
 		tupDesc = ExecGetResultType(outerNode);
+		int col_num = tupDesc->natts;
+                                              
+		// node->tupleShuffleSortState = (void *) tupleShuffleSortState;
 
-		tuplesortstate = tuplesort_begin_heap(tupDesc,
-											  plannode->numCols,
-											  plannode->sortColIdx,
-											  plannode->sortOperators,
-											  plannode->collations,
-											  plannode->nullsFirst,
-											  work_mem,
-											  node->randomAccess);
-		if (node->bounded)
-			tuplesort_set_bound(tuplesortstate, node->bound);
-		node->tuplesortstate = (void *) tuplesortstate;
+		int iter_num = model->iter_num;
+        int batch_size = node->model->batch_size;
 
-		/*
-		 * Scan the subplan and feed all the tuples to tuplesort.
-		 */
+		SGDTupleDesc* sgd_tupledesc = init_SGDTupleDesc(col_num, model->n_features);
 
-		for (;;)
-		{
-			slot = ExecProcNode(outerNode);
+		// iterations
+		for (int i = 1; i <= iter_num; i++) {
+			int ith_tuple = 0;
+			while(true) {
+				// get a tuple from ShuffleSortNode
+				slot = ExecProcNode(outerNode);
 
-			if (TupIsNull(slot))
-				break;
+				if (TupIsNull(slot)) {
+					if (i == iter_num) {
+						elog(LOG, "[Iteartion %d] Finalize the model.", i);
+						perform_SGD(node->model, NULL, batchstate, ith_tuple);
+                		// can also free_SGDBatchState in ExecEndSGD
+                		free_SGDBatchState(batchstate);
+						free_SGDTuple(sgd_tuple);
+						free_SGDTupleDesc(sgd_tupledesc);
+						break;	
+					}
+					else {
+						elog(LOG, "[Iteartion %d] Finish current iteration.", i);
+						perform_SGD(node->model, NULL, batchstate, ith_tuple);
+						clear_SGDBatchState(batchstate, model->n_features);
+						ExecReScan(outerNode);	
+						break;
+					}
+				}
 
-			tuplesort_puttupleslot(tuplesortstate, slot);
+				transfer_slot_to_sgd_tuple(slot, sgd_tuple, sgd_tupledesc);
+				perform_SGD(node->model, sgd_tuple, batchstate, ith_tuple);
+            	ith_tuple = (ith_tuple + 1) % batch_size;
+
+				if (i == 1)
+					model->tuple_num = model->tuple_num + 1;
+			}
 		}
-
-		/*
-		 * Complete the sort.
-		 */
-		tuplesort_performsort(tuplesortstate);
-
-		/*
-		 * restore to user specified direction
-		 */
-		estate->es_direction = dir;
-
-		/*
-		 * finally set the sorted flag to true
-		 */
-		node->sort_Done = true;
-		node->bounded_Done = node->bounded;
-		node->bound_Done = node->bound;
-		SO1_printf("ExecSort: %s\n", "sorting done");
+		
+		node->sgd_done = true;
+		SO1_printf("ExecSGD: %s\n", "Performing SGD done");
 	}
 
-	SO1_printf("ExecSort: %s\n",
-			   "retrieving tuple from tuplesort");
+	// Get the first or next tuple from tuplesort. Returns NULL if no more tuples.
 
-	/*
-	 * Get the first or next tuple from tuplesort. Returns NULL if no more
-	 * tuples.
-	 */
-	slot = node->ss.ps.ps_ResultTupleSlot;
-	(void) tuplesort_gettupleslot(tuplesortstate,
-								  ScanDirectionIsForward(dir),
-								  slot);
+    // node->ps.ps_ResultTupleSlot; // = Model->w, => ExecStoreMinimalTuple();
+	// slot = node->ps.ps_ResultTupleSlot;
+
+	SO1_printf("Model total loss: %s\n", model->total_loss);
+
+	// slot = output_model_record(node->ps.ps_ResultTupleSlot, model);
+
 	return slot;
 }
 
@@ -151,45 +382,33 @@ ExecSort(SortState *node)
 SortState *
 ExecInitSort(Sort *node, EState *estate, int eflags)
 {
-	SortState  *sortstate;
+	SortState  *sgdstate;
 
-	SO1_printf("ExecInitSort: %s\n",
-			   "initializing sort node");
+	SO1_printf("ExecInitSGD: %s\n",
+			   "initializing SGD node");
 
 	/*
 	 * create state structure
 	 */
-	sortstate = makeNode(SortState);
-	sortstate->ss.ps.plan = (Plan *) node;
-	sortstate->ss.ps.state = estate;
+	sgdstate = makeNode(SortState);
+	sgdstate->ps.plan = (Plan *) node;
+	sgdstate->ps.state = estate;
+    sgdstate->sgd_done = false;
 
-	/*
-	 * We must have random access to the sort output to do backward scan or
-	 * mark/restore.  We also prefer to materialize the sort output if we
-	 * might be called on to rewind and replay it many times.
-	 */
-	sortstate->randomAccess = (eflags & (EXEC_FLAG_REWIND |
-										 EXEC_FLAG_BACKWARD |
-										 EXEC_FLAG_MARK)) != 0;
-
-	sortstate->bounded = false;
-	sortstate->sort_Done = false;
-	sortstate->tuplesortstate = NULL;
-
-	/*
-	 * Miscellaneous initialization
-	 *
-	 * Sort nodes don't initialize their ExprContexts because they never call
-	 * ExecQual or ExecProject.
-	 */
+	// for forest
+    int n_features = 54;
+    
+    sgdstate->model = init_model(n_features);
+	
+	elog(LOG, "[SVM] Initialize SVM model");
+    // elog(LOG, "[SVM] loss = 0, p1 = 0, p2 = 0, gradient = 0, batch_size = 10, learning_rate = 0.1");
 
 	/*
 	 * tuple table initialization
 	 *
 	 * sort nodes only return scan tuples from their sorted relation.
 	 */
-	ExecInitResultTupleSlot(estate, &sortstate->ss.ps);
-	ExecInitScanTupleSlot(estate, &sortstate->ss);
+	ExecInitResultTupleSlot(estate, &sgdstate->ps);
 
 	/*
 	 * initialize child nodes
@@ -199,20 +418,20 @@ ExecInitSort(Sort *node, EState *estate, int eflags)
 	 */
 	eflags &= ~(EXEC_FLAG_REWIND | EXEC_FLAG_BACKWARD | EXEC_FLAG_MARK);
 
-	outerPlanState(sortstate) = ExecInitNode(outerPlan(node), estate, eflags);
+	outerPlanState(sgdstate) = ExecInitNode(outerPlan(node), estate, eflags);
 
 	/*
 	 * initialize tuple type.  no need to initialize projection info because
 	 * this node doesn't do projections.
 	 */
-	ExecAssignResultTypeFromTL(&sortstate->ss.ps);
-	ExecAssignScanTypeFromOuterPlan(&sortstate->ss);
-	sortstate->ss.ps.ps_ProjInfo = NULL;
+	ExecAssignResultTypeFromTL(&sgdstate->ps);
+	// ExecAssignScanTypeFromOuterPlan(&sortstate->ss);
+	// sortstate->ss.ps.ps_ProjInfo = NULL;
 
-	SO1_printf("ExecInitSort: %s\n",
-			   "sort node initialized");
+	SO1_printf("ExecInitSGD: %s\n",
+			   "SGD node initialized");
 
-	return sortstate;
+	return sgdstate;
 }
 
 /* ----------------------------------------------------------------
@@ -222,30 +441,22 @@ ExecInitSort(Sort *node, EState *estate, int eflags)
 void
 ExecEndSort(SortState *node)
 {
-	SO1_printf("ExecEndSort: %s\n",
-			   "shutting down sort node");
+	/*
+	 * Free the exprcontext
+	 */
+	ExecFreeExprContext(&node->ps);
 
 	/*
 	 * clean out the tuple table
 	 */
-	ExecClearTuple(node->ss.ss_ScanTupleSlot);
-	/* must drop pointer to sort result tuple */
-	ExecClearTuple(node->ss.ps.ps_ResultTupleSlot);
+	ExecClearTuple(node->ps.ps_ResultTupleSlot);
 
-	/*
-	 * Release tuplesort resources
-	 */
-	if (node->tuplesortstate != NULL)
-		tuplesort_end((Tuplesortstate *) node->tuplesortstate);
-	node->tuplesortstate = NULL;
+	ExecClearModel(node->model);
 
-	/*
-	 * shut down the subplan
-	 */
 	ExecEndNode(outerPlanState(node));
 
-	SO1_printf("ExecEndSort: %s\n",
-			   "sort node shutdown");
+	SO1_printf("ExecEndSGD: %s\n",
+			   "SGD node shutdown");
 }
 
 /* ----------------------------------------------------------------
@@ -260,10 +471,10 @@ ExecSortMarkPos(SortState *node)
 	/*
 	 * if we haven't sorted yet, just return
 	 */
-	if (!node->sort_Done)
-		return;
+	// if (!node->sort_Done)
+	// 	return;
 
-	tuplesort_markpos((Tuplesortstate *) node->tuplesortstate);
+	// tuplesort_markpos((Tuplesortstate *) node->tuplesortstate);
 }
 
 /* ----------------------------------------------------------------
@@ -275,55 +486,20 @@ ExecSortMarkPos(SortState *node)
 void
 ExecSortRestrPos(SortState *node)
 {
-	/*
-	 * if we haven't sorted yet, just return.
-	 */
-	if (!node->sort_Done)
-		return;
+	// /*
+	//  * if we haven't sorted yet, just return.
+	//  */
+	// if (!node->sort_Done)
+	// 	return;
 
-	/*
-	 * restore the scan to the previously marked position
-	 */
-	tuplesort_restorepos((Tuplesortstate *) node->tuplesortstate);
+	// /*
+	//  * restore the scan to the previously marked position
+	//  */
+	// tuplesort_restorepos((Tuplesortstate *) node->tuplesortstate);
 }
 
 void
 ExecReScanSort(SortState *node)
 {
-	/*
-	 * If we haven't sorted yet, just return. If outerplan's chgParam is not
-	 * NULL then it will be re-scanned by ExecProcNode, else no reason to
-	 * re-scan it at all.
-	 */
-	if (!node->sort_Done)
-		return;
 
-	/* must drop pointer to sort result tuple */
-	ExecClearTuple(node->ss.ps.ps_ResultTupleSlot);
-
-	/*
-	 * If subnode is to be rescanned then we forget previous sort results; we
-	 * have to re-read the subplan and re-sort.  Also must re-sort if the
-	 * bounded-sort parameters changed or we didn't select randomAccess.
-	 *
-	 * Otherwise we can just rewind and rescan the sorted output.
-	 */
-	if (node->ss.ps.lefttree->chgParam != NULL ||
-		node->bounded != node->bounded_Done ||
-		node->bound != node->bound_Done ||
-		!node->randomAccess)
-	{
-		node->sort_Done = false;
-		tuplesort_end((Tuplesortstate *) node->tuplesortstate);
-		node->tuplesortstate = NULL;
-
-		/*
-		 * if chgParam of subnode is not null then plan will be re-scanned by
-		 * first ExecProcNode.
-		 */
-		if (node->ss.ps.lefttree->chgParam == NULL)
-			ExecReScan(node->ss.ps.lefttree);
-	}
-	else
-		tuplesort_rescan((Tuplesortstate *) node->tuplesortstate);
 }

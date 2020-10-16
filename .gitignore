@@ -31,3 +31,5 @@ lib*dll.def
 /pgsql.sln.cache
 /Debug/
 /Release/
+
+.DS_Store

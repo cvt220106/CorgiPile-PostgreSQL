@@ -15,6 +15,7 @@
 #define NODESORT_H
 
 #include "nodes/execnodes.h"
+#include "utils/sgdmodel.h"
 
 extern SortState *ExecInitSort(Sort *node, EState *estate, int eflags);
 extern TupleTableSlot *ExecSort(SortState *node);

@@ -318,48 +318,48 @@ recompute_limits(LimitState *node)
 static void
 pass_down_bound(LimitState *node, PlanState *child_node)
 {
-	if (IsA(child_node, SortState))
-	{
-		SortState  *sortState = (SortState *) child_node;
-		int64		tuples_needed = node->count + node->offset;
+	// if (IsA(child_node, SortState))
+	// {
+	// 	SortState  *sortState = (SortState *) child_node;
+	// 	int64		tuples_needed = node->count + node->offset;
 
-		/* negative test checks for overflow in sum */
-		if (node->noCount || tuples_needed < 0)
-		{
-			/* make sure flag gets reset if needed upon rescan */
-			sortState->bounded = false;
-		}
-		else
-		{
-			sortState->bounded = true;
-			sortState->bound = tuples_needed;
-		}
-	}
-	else if (IsA(child_node, MergeAppendState))
-	{
-		MergeAppendState *maState = (MergeAppendState *) child_node;
-		int			i;
+	// 	/* negative test checks for overflow in sum */
+	// 	if (node->noCount || tuples_needed < 0)
+	// 	{
+	// 		/* make sure flag gets reset if needed upon rescan */
+	// 		sortState->bounded = false;
+	// 	}
+	// 	else
+	// 	{
+	// 		sortState->bounded = true;
+	// 		sortState->bound = tuples_needed;
+	// 	}
+	// }
+	// else if (IsA(child_node, MergeAppendState))
+	// {
+	// 	MergeAppendState *maState = (MergeAppendState *) child_node;
+	// 	int			i;
 
-		for (i = 0; i < maState->ms_nplans; i++)
-			pass_down_bound(node, maState->mergeplans[i]);
-	}
-	else if (IsA(child_node, ResultState))
-	{
-		/*
-		 * An extra consideration here is that if the Result is projecting a
-		 * targetlist that contains any SRFs, we can't assume that every input
-		 * tuple generates an output tuple, so a Sort underneath might need to
-		 * return more than N tuples to satisfy LIMIT N. So we cannot use
-		 * bounded sort.
-		 *
-		 * If Result supported qual checking, we'd have to punt on seeing a
-		 * qual, too.  Note that having a resconstantqual is not a
-		 * showstopper: if that fails we're not getting any rows at all.
-		 */
-		if (outerPlanState(child_node) &&
-			!expression_returns_set((Node *) child_node->plan->targetlist))
-			pass_down_bound(node, outerPlanState(child_node));
-	}
+	// 	for (i = 0; i < maState->ms_nplans; i++)
+	// 		pass_down_bound(node, maState->mergeplans[i]);
+	// }
+	// else if (IsA(child_node, ResultState))
+	// {
+	// 	/*
+	// 	 * An extra consideration here is that if the Result is projecting a
+	// 	 * targetlist that contains any SRFs, we can't assume that every input
+	// 	 * tuple generates an output tuple, so a Sort underneath might need to
+	// 	 * return more than N tuples to satisfy LIMIT N. So we cannot use
+	// 	 * bounded sort.
+	// 	 *
+	// 	 * If Result supported qual checking, we'd have to punt on seeing a
+	// 	 * qual, too.  Note that having a resconstantqual is not a
+	// 	 * showstopper: if that fails we're not getting any rows at all.
+	// 	 */
+	// 	if (outerPlanState(child_node) &&
+	// 		!expression_returns_set((Node *) child_node->plan->targetlist))
+	// 		pass_down_bound(node, outerPlanState(child_node));
+	// }
 }
 
 /* ----------------------------------------------------------------

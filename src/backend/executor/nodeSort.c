@@ -22,32 +22,6 @@
 #include "utils/array.h"
 
 
-typedef struct SGDBatchState
-{
-	double*		gradients;	  /* sum the gradient of each tuple in a batch, n_dim */		
-    double		loss;	      /* sum the loss of each tuple in a batch */		
-} SGDBatchState;
-
-
-typedef struct SGDTuple
-{
-	double*	 features;		/* features of a tuple, n_dim */	
-    int		 class_label;	/* the class label of a tuple, -1 if there is not any label */
-	// int			tupindex;		/* the ith-tuple */
-} SGDTuple;
-
-typedef struct SGDTupleDesc
-{ 
-	// e.g., features = [0.1, 0, 0.2, 0, 0, 0.3, 0, 0], class_label = -1
-	// Tuple = {10, {0, 2, 5}, {0.1, 0.2, 0.3}, -1}
-	int k_col; // 1 // just for sparse dataset, if dense, only v_col is used.
-	int v_col; // 2
-	int label_col; // 3
-	int n_features;  // 8
-	
-	Datum* values;
-	bool* isnulls;
-} SGDTupleDesc;
 
 
 Model* init_model(int n_features) {
@@ -86,7 +60,7 @@ SGDBatchState* init_SGDBatchState(int n_features) {
     return batchstate;
 }
 
-SGDTupleDesc* init_SGDTuple(int n_features) {
+SGDTuple* init_SGDTuple(int n_features) {
     SGDTuple* sgd_tuple = (SGDTuple *) palloc0(sizeof(SGDTuple));
     sgd_tuple->features = (double *) palloc0(sizeof(double) * n_features);
     return sgd_tuple;
@@ -109,6 +83,7 @@ SGDTupleDesc* init_SGDTupleDesc(int col_num, int n_features) {
 	sgd_tupledesc->k_col = 1;
 	sgd_tupledesc->v_col = 2;
 	sgd_tupledesc->label_col = 3;
+	sgd_tupledesc->n_features = n_features;
 
     return sgd_tupledesc;
 }
@@ -144,7 +119,7 @@ compute_tuple_gradient_loss(SGDTuple* tp, Model* model, SGDBatchState* batchstat
 
     int n = model->n_features;
 
-    double loss = 0;
+    // double loss = 0;
     double grad[n];
 
     // compute gradients of the incoming tuple
@@ -207,7 +182,7 @@ transfer_slot_to_sgd_tuple(
 
 	// store the values of slot to values/isnulls arrays
 	/* slot => Datum values/isnulls */
-	heap_deform_tuple(slot, slot->tts_tupleDescriptor, sgd_tupledesc->values, sgd_tupledesc->isnulls);
+	heap_deform_tuple(slot->tts_tuple, slot->tts_tupleDescriptor, sgd_tupledesc->values, sgd_tupledesc->isnulls);
 	// DatumGetInt32
 	// tupleDesc->attrs[0]->atttypid
 
@@ -240,7 +215,7 @@ transfer_slot_to_sgd_tuple(
 	if (k_col >= 0) {
 		/* k Datum array => int* k */
 		Datum k_dat = sgd_tupledesc->values[k_col]; // Datum{0, 2, 5}
-		ArrayType  *k_array = DatumGetArrayTypeP(k_array);
+		ArrayType  *k_array = DatumGetArrayTypeP(k_dat);
 		int	k_num = ArrayGetNItems(ARR_NDIM(k_array), ARR_DIMS(k_array));
 		int *k = (int *) ARR_DATA_PTR(k_array);
 
@@ -296,82 +271,176 @@ ExecSort(SortState *node)
 	 * If first time through, read all tuples from outer plan and pass them to
 	 * tuplesort.c. Subsequent calls just fetch tuples from tuplesort.
 	 */
-	if (!node->sgd_done)
-	{
-		SGDBatchState* batchstate = init_SGDBatchState(model->n_features);
-		SGDTuple* sgd_tuple = init_SGDTuple(model->n_features);
-		//Datum values[model->n_features + model-> slot->]
-		// ShuffleSort	   *plannode = (ShuffleSort *) node->ss.ps.plan;
-		PlanState  *outerNode;
-		TupleDesc	tupDesc;
+	SGDBatchState* batchstate = init_SGDBatchState(model->n_features);
+	SGDTuple* sgd_tuple = init_SGDTuple(model->n_features);
+	//Datum values[model->n_features + model-> slot->]
+	// ShuffleSort	   *plannode = (ShuffleSort *) node->ss.ps.plan;
+	PlanState  *outerNode;
+	TupleDesc	tupDesc;
 
-		SO1_printf("ExecSGD: %s\n", "SGD iteration ");
+	SO1_printf("ExecSGD: %s\n", "SGD iteration ");
 
-		estate->es_direction = ForwardScanDirection;
+	estate->es_direction = ForwardScanDirection;
 
-		// outerNode = ShuffleSortNode
-		outerNode = outerPlanState(node);
-		// tupDesc is the TupleDesc of the previous node
-		tupDesc = ExecGetResultType(outerNode);
-		int col_num = tupDesc->natts;
+	// outerNode = ShuffleSortNode
+	outerNode = outerPlanState(node);
+	// tupDesc is the TupleDesc of the previous node
+	tupDesc = ExecGetResultType(outerNode);
+	int col_num = tupDesc->natts;
                                               
-		// node->tupleShuffleSortState = (void *) tupleShuffleSortState;
+	// node->tupleShuffleSortState = (void *) tupleShuffleSortState;
 
-		int iter_num = model->iter_num;
-        int batch_size = node->model->batch_size;
+	int iter_num = model->iter_num;
+    int batch_size = node->model->batch_size;
 
-		SGDTupleDesc* sgd_tupledesc = init_SGDTupleDesc(col_num, model->n_features);
+	SGDTupleDesc* sgd_tupledesc = init_SGDTupleDesc(col_num, model->n_features);
 
-		// iterations
-		for (int i = 1; i <= iter_num; i++) {
-			int ith_tuple = 0;
-			while(true) {
-				// get a tuple from ShuffleSortNode
-				slot = ExecProcNode(outerNode);
+	// iterations
+	for (int i = 1; i <= iter_num; i++) {
+		int ith_tuple = 0;
+		while(true) {
+			// get a tuple from ShuffleSortNode
+			slot = ExecProcNode(outerNode);
 
-				if (TupIsNull(slot)) {
-					if (i == iter_num) {
-						elog(LOG, "[Iteartion %d] Finalize the model.", i);
-						perform_SGD(node->model, NULL, batchstate, ith_tuple);
-                		// can also free_SGDBatchState in ExecEndSGD
-                		free_SGDBatchState(batchstate);
-						free_SGDTuple(sgd_tuple);
-						free_SGDTupleDesc(sgd_tupledesc);
-						break;	
-					}
-					else {
-						elog(LOG, "[Iteartion %d] Finish current iteration.", i);
-						perform_SGD(node->model, NULL, batchstate, ith_tuple);
-						clear_SGDBatchState(batchstate, model->n_features);
-						ExecReScan(outerNode);	
-						break;
-					}
+			if (TupIsNull(slot)) {
+				if (i == iter_num) {
+					elog(LOG, "[Iteartion %d] Finalize the model.", i);
+					perform_SGD(node->model, NULL, batchstate, ith_tuple);
+                	// can also free_SGDBatchState in ExecEndSGD
+                	free_SGDBatchState(batchstate);
+					free_SGDTuple(sgd_tuple);
+					free_SGDTupleDesc(sgd_tupledesc);
+					break;	
 				}
-
-				transfer_slot_to_sgd_tuple(slot, sgd_tuple, sgd_tupledesc);
-				perform_SGD(node->model, sgd_tuple, batchstate, ith_tuple);
-            	ith_tuple = (ith_tuple + 1) % batch_size;
-
-				if (i == 1)
-					model->tuple_num = model->tuple_num + 1;
+				else {
+					elog(LOG, "[Iteartion %d] Finish current iteration.", i);
+					perform_SGD(node->model, NULL, batchstate, ith_tuple);
+					clear_SGDBatchState(batchstate, model->n_features);
+					ExecReScan(outerNode);	
+					break;
+				}
 			}
+
+			transfer_slot_to_sgd_tuple(slot, sgd_tuple, sgd_tupledesc);
+			perform_SGD(node->model, sgd_tuple, batchstate, ith_tuple);
+            ith_tuple = (ith_tuple + 1) % batch_size;
+
+			if (i == 1)
+				model->tuple_num = model->tuple_num + 1;
 		}
-		
-		node->sgd_done = true;
-		SO1_printf("ExecSGD: %s\n", "Performing SGD done");
 	}
+		
+	node->sgd_done = true;
+	SO1_printf("ExecSGD: %s\n", "Performing SGD done");
 
 	// Get the first or next tuple from tuplesort. Returns NULL if no more tuples.
 
     // node->ps.ps_ResultTupleSlot; // = Model->w, => ExecStoreMinimalTuple();
 	// slot = node->ps.ps_ResultTupleSlot;
-
-	SO1_printf("Model total loss: %s\n", model->total_loss);
+	elog(LOG, "[Model total loss %f]", model->total_loss);
 
 	// slot = output_model_record(node->ps.ps_ResultTupleSlot, model);
 
 	return slot;
 }
+
+
+// TupleTableSlot *
+// ExecSort(SortState *node)
+// {
+// 	EState	   *estate;
+// 	TupleTableSlot *slot;
+// 	Model* model = node->model;
+
+// 	/*
+// 	 * get state info from node
+// 	 */
+// 	SO1_printf("ExecSGD: %s\n", "entering routine");
+
+// 	estate = node->ps.state;
+	
+// 	// tupleSGDState = (TupleSGDState *) node->tupleSGDState;
+
+// 	/*
+// 	 * If first time through, read all tuples from outer plan and pass them to
+// 	 * tuplesort.c. Subsequent calls just fetch tuples from tuplesort.
+// 	 */
+// 	if (!node->sgd_done)
+// 	{
+// 		SGDBatchState* batchstate = init_SGDBatchState(model->n_features);
+// 		SGDTuple* sgd_tuple = init_SGDTuple(model->n_features);
+// 		//Datum values[model->n_features + model-> slot->]
+// 		// ShuffleSort	   *plannode = (ShuffleSort *) node->ss.ps.plan;
+// 		PlanState  *outerNode;
+// 		TupleDesc	tupDesc;
+
+// 		SO1_printf("ExecSGD: %s\n", "SGD iteration ");
+
+// 		estate->es_direction = ForwardScanDirection;
+
+// 		// outerNode = ShuffleSortNode
+// 		outerNode = outerPlanState(node);
+// 		// tupDesc is the TupleDesc of the previous node
+// 		tupDesc = ExecGetResultType(outerNode);
+// 		int col_num = tupDesc->natts;
+                                              
+// 		// node->tupleShuffleSortState = (void *) tupleShuffleSortState;
+
+// 		int iter_num = model->iter_num;
+//         int batch_size = node->model->batch_size;
+
+// 		SGDTupleDesc* sgd_tupledesc = init_SGDTupleDesc(col_num, model->n_features);
+
+// 		// iterations
+// 		for (int i = 1; i <= iter_num; i++) {
+// 			int ith_tuple = 0;
+// 			while(true) {
+// 				// get a tuple from ShuffleSortNode
+// 				slot = ExecProcNode(outerNode);
+
+// 				if (TupIsNull(slot)) {
+// 					if (i == iter_num) {
+// 						elog(LOG, "[Iteartion %d] Finalize the model.", i);
+// 						perform_SGD(node->model, NULL, batchstate, ith_tuple);
+//                 		// can also free_SGDBatchState in ExecEndSGD
+//                 		free_SGDBatchState(batchstate);
+// 						free_SGDTuple(sgd_tuple);
+// 						free_SGDTupleDesc(sgd_tupledesc);
+// 						break;	
+// 					}
+// 					else {
+// 						elog(LOG, "[Iteartion %d] Finish current iteration.", i);
+// 						perform_SGD(node->model, NULL, batchstate, ith_tuple);
+// 						clear_SGDBatchState(batchstate, model->n_features);
+// 						ExecReScan(outerNode);	
+// 						break;
+// 					}
+// 				}
+
+// 				transfer_slot_to_sgd_tuple(slot, sgd_tuple, sgd_tupledesc);
+// 				perform_SGD(node->model, sgd_tuple, batchstate, ith_tuple);
+//             	ith_tuple = (ith_tuple + 1) % batch_size;
+
+// 				if (i == 1)
+// 					model->tuple_num = model->tuple_num + 1;
+// 			}
+// 		}
+		
+// 		node->sgd_done = true;
+// 		SO1_printf("ExecSGD: %s\n", "Performing SGD done");
+// 	}
+
+// 	// Get the first or next tuple from tuplesort. Returns NULL if no more tuples.
+
+//     // node->ps.ps_ResultTupleSlot; // = Model->w, => ExecStoreMinimalTuple();
+// 	// slot = node->ps.ps_ResultTupleSlot;
+
+// 	SO1_printf("Model total loss: %s\n", model->total_loss);
+
+// 	// slot = output_model_record(node->ps.ps_ResultTupleSlot, model);
+
+// 	return slot;
+// }
 
 /* ----------------------------------------------------------------
  *		ExecInitSort
@@ -397,7 +466,7 @@ ExecInitSort(Sort *node, EState *estate, int eflags)
     sgdstate->sgd_done = false;
 
 	// for forest
-    int n_features = 54;
+    int n_features = 41270; // 54;
     
     sgdstate->model = init_model(n_features);
 	

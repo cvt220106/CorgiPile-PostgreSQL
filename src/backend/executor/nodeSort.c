@@ -20,6 +20,7 @@
 #include "miscadmin.h"
 #include "utils/tuplesort.h"
 #include "utils/array.h"
+#include "time.h"
 
 
 
@@ -28,11 +29,11 @@ Model* init_model(int n_features) {
     Model* model = (Model *) palloc0(sizeof(Model));
 
 	model->total_loss = 0;
-    model->batch_size = 100;
-    model->learning_rate = 0.01;
+    model->batch_size = 500;
+    model->learning_rate = 0.001;
     model->n_features = n_features;
 	model->tuple_num = 0;
-	model->iter_num = 5;
+	model->iter_num = 50;
 
     
 	model->w = (double *) palloc0(sizeof(double) * n_features);
@@ -151,7 +152,7 @@ void update_model(Model* model, SGDBatchState* batchstate) {
 
     // add graidents to the model and clear the batch gradients
     for (int i = 0; i < model->n_features; i++) {
-        model->w[i] = model->w[i] + model->learning_rate * batchstate->gradients[i];
+        model->w[i] = model->w[i] - model->learning_rate * batchstate->gradients[i];
         batchstate->gradients[i] = 0;
     }
 
@@ -295,6 +296,14 @@ ExecSort(SortState *node)
 
 	SGDTupleDesc* sgd_tupledesc = init_SGDTupleDesc(col_num, model->n_features);
 
+	// for counting data parsing time
+	clock_t parse_start, parse_finish;
+	double parse_time = 0;
+
+	// for counting the computation time
+	clock_t comp_start, comp_finish;
+	double comp_time = 0;
+
 	// iterations
 	for (int i = 1; i <= iter_num; i++) {
 		int ith_tuple = 0;
@@ -304,8 +313,10 @@ ExecSort(SortState *node)
 
 			if (TupIsNull(slot)) {
 				if (i == iter_num) {
-					elog(LOG, "[Iteartion %d] Finalize the model.", i);
+					// elog(LOG, "[Iteartion %d] Finalize the model.", i);
 					perform_SGD(node->model, NULL, batchstate, ith_tuple);
+					elog(LOG, "[Finish iteartion %d] Loss = %f, parse_t = %fs, comp_t = %fs", 
+							i, model->total_loss, parse_time, comp_time);
                 	// can also free_SGDBatchState in ExecEndSGD
                 	free_SGDBatchState(batchstate);
 					free_SGDTuple(sgd_tuple);
@@ -313,16 +324,29 @@ ExecSort(SortState *node)
 					break;	
 				}
 				else {
-					elog(LOG, "[Iteartion %d] Finish current iteration.", i);
+					// Current iteration ends, update model and print metrics
 					perform_SGD(node->model, NULL, batchstate, ith_tuple);
+					elog(LOG, "[Finish iteartion %d] Loss = %f, parse_t = %fs, comp_t = %fs", 
+							i, model->total_loss, parse_time, comp_time);
+					model->total_loss = 0;
+					parse_time = 0;
+					comp_time = 0;
 					clear_SGDBatchState(batchstate, model->n_features);
 					ExecReScan(outerNode);	
 					break;
 				}
 			}
 
+			parse_start = clock();
 			transfer_slot_to_sgd_tuple(slot, sgd_tuple, sgd_tupledesc);
+			parse_finish = clock();
+			parse_time += (double)(parse_finish - parse_start) / CLOCKS_PER_SEC;    
+
+			comp_start = clock();
 			perform_SGD(node->model, sgd_tuple, batchstate, ith_tuple);
+			comp_finish = clock();
+			comp_time += (double)(comp_finish - comp_start) / CLOCKS_PER_SEC;
+
             ith_tuple = (ith_tuple + 1) % batch_size;
 
 			if (i == 1)
@@ -337,7 +361,7 @@ ExecSort(SortState *node)
 
     // node->ps.ps_ResultTupleSlot; // = Model->w, => ExecStoreMinimalTuple();
 	// slot = node->ps.ps_ResultTupleSlot;
-	elog(LOG, "[Model total loss %f]", model->total_loss);
+	// elog(LOG, "[Model total loss %f]", model->total_loss);
 
 	// slot = output_model_record(node->ps.ps_ResultTupleSlot, model);
 

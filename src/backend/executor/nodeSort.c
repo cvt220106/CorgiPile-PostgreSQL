@@ -30,7 +30,7 @@ Model* init_model(int n_features) {
 
 	model->total_loss = 0;
     model->batch_size = 500;
-    model->learning_rate = 0.001;
+    model->learning_rate = 0.5;
     model->n_features = n_features;
 	model->tuple_num = 0;
 	model->iter_num = 50;
@@ -128,7 +128,7 @@ compute_tuple_gradient_loss(SGDTuple* tp, Model* model, SGDBatchState* batchstat
     for (int i = 0; i < n; i++)
         wx = wx + model->w[i] * x[i];
     double ywx = y * wx;
-    if (ywx < 1) {
+    if (1 - ywx > 0) {
         for (int i = 0; i < n; i++)
             grad[i] = -y * x[i];
     }
@@ -221,9 +221,10 @@ transfer_slot_to_sgd_tuple(
 		int *k = (int *) ARR_DATA_PTR(k_array);
 
 		// TODO: change to memset()
-		for (int i = 0; i < n_features; i++) {
-			features[i] = 0;
-		}
+		// for (int i = 0; i < n_features; i++) {
+		// 	features[i] = 0;
+		// }
+		memset(features, 0, sizeof(double) * n_features);
 
 		for (int i = 0; i < k_num; i++) {
 			int f_index = k[i]; // {0, 2, 5}, k[1] = 2
@@ -352,6 +353,10 @@ ExecSort(SortState *node)
 			if (i == 1)
 				model->tuple_num = model->tuple_num + 1;
 		}
+
+		// decay the learning rate with 0.95^iter_num
+		model->learning_rate = model->learning_rate * 0.95;
+	
 	}
 		
 	node->sgd_done = true;

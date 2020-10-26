@@ -28,13 +28,22 @@
 Model* init_model(int n_features) {
     Model* model = (Model *) palloc0(sizeof(Model));
 
+	/* for dblife 
 	model->total_loss = 0;
     model->batch_size = 500;
     model->learning_rate = 0.5;
     model->n_features = n_features;
 	model->tuple_num = 0;
-	model->iter_num = 50;
+	model->iter_num = 10; // to change
+	*/
 
+	/* for forest */
+	model->total_loss = 0;
+    model->batch_size = 1000;
+    model->learning_rate = 0.5;
+    model->n_features = n_features;
+	model->tuple_num = 0;
+	model->iter_num = 50; // to change
     
 	model->w = (double *) palloc0(sizeof(double) * n_features);
 
@@ -81,10 +90,19 @@ SGDTupleDesc* init_SGDTupleDesc(int col_num, int n_features) {
 	v double precision[],
 	label integer);
 	*/
-	sgd_tupledesc->k_col = 1;
+	/* for dblife 
+	sgd_tupledesc->k_col = 1; 
 	sgd_tupledesc->v_col = 2;
 	sgd_tupledesc->label_col = 3;
 	sgd_tupledesc->n_features = n_features;
+	*/
+
+	/* for forest */ 
+	sgd_tupledesc->k_col = -1; // from 0
+	sgd_tupledesc->v_col = 1;
+	sgd_tupledesc->label_col = 2;
+	sgd_tupledesc->n_features = n_features;
+
 
     return sgd_tupledesc;
 }
@@ -139,13 +157,13 @@ compute_tuple_gradient_loss(SGDTuple* tp, Model* model, SGDBatchState* batchstat
 
     // Add this tuple's gradient to the previous gradients in this batch
     for (int i = 0; i < n; i++) 
-        batchstate->gradients[i] += grad[i];
+        batchstate->gradients[i] = batchstate->gradients[i] + grad[i];
 
     // compute the loss of the incoming tuple
     double tuple_loss = 1 - ywx;
     if (tuple_loss < 0)
         tuple_loss = 0;
-    batchstate->loss += tuple_loss;
+    batchstate->loss = batchstate->loss + tuple_loss;
 }
 
 void update_model(Model* model, SGDBatchState* batchstate) {
@@ -203,6 +221,9 @@ transfer_slot_to_sgd_tuple(
 	//Assert(ARR_ELEMTYPE(array) == FLOAT4OID);
 	int	v_num = ArrayGetNItems(ARR_NDIM(v_array), ARR_DIMS(v_array));
 	double *v = (double *) ARR_DATA_PTR(v_array);
+	// for (int i = 0; i < v_num; i++)
+	// 	elog(LOG, "%f, ", v[i]);
+
 
 	/* label dataum => int class_label */
 	int label = DatumGetInt32(label_dat);
@@ -237,6 +258,7 @@ transfer_slot_to_sgd_tuple(
 			features[i] = v[i];
 		}
 	}
+	
 }
 
 /* ----------------------------------------------------------------
@@ -495,8 +517,11 @@ ExecInitSort(Sort *node, EState *estate, int eflags)
     sgdstate->sgd_done = false;
 
 	// for forest
-    int n_features = 41270; // 54;
+    int n_features = 54;
     
+	// for dblife
+	// int n_features = 41270; 
+
     sgdstate->model = init_model(n_features);
 	
 	elog(LOG, "[SVM] Initialize SVM model");

@@ -57,6 +57,13 @@ SeqNext(SeqScanState *node)
 	 */
 	scandesc = node->ss_currentScanDesc;
 	estate = node->ps.state;
+
+	
+    // Lijie: add begin
+    estate->es_direction = ShuffleScanDirection;
+    // Lijie: add end
+
+
 	direction = estate->es_direction;
 	slot = node->ss_ScanTupleSlot;
 

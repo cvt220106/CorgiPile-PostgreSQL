@@ -1,0 +1,27 @@
+
+{
+    "files.associations": {
+        "algorithm": "c",
+        "__node_handle": "cpp",
+        "tuplesort.h": "c",
+        "__tuple": "c",
+        "tuple": "c",
+        "locale": "c",
+        "string": "c",
+        "bitset": "c",
+        "__bit_reference": "cpp",
+        "__functional_base": "cpp",
+        "atomic": "cpp",
+        "chrono": "cpp",
+        "__memory": "cpp",
+        "functional": "cpp",
+        "iterator": "cpp",
+        "limits": "cpp",
+        "memory": "cpp",
+        "optional": "cpp",
+        "ratio": "cpp",
+        "system_error": "cpp",
+        "type_traits": "cpp",
+        "vector": "cpp"
+    }
+}

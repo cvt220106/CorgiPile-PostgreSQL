@@ -118,7 +118,7 @@ ExecLimit(LimitState *node)
 			return NULL;
 
 		case LIMIT_INWINDOW:
-			if (ScanDirectionIsForward(direction))
+			if (ScanDirectionIsForward(direction) || ScanDirectionIsShuffle(direction))
 			{
 				/*
 				 * Forwards scan, so check for stepping off end of window. If

@@ -74,7 +74,7 @@
 
 
 // added by Lijie
-#define IOBigBlockSize 10 * 1024 * 1024 // 10MB
+#define IOBigBlockSize 1 * 1024 * 1024 // 10MB
 // added end
 
 /* GUC variable */
@@ -948,7 +948,7 @@ heapgettup_pagemode(HeapScanDesc scan,
 	}
 
 	// Lijie: add begin
-	else if (ScanDirectionIsShuffle(dir))
+	else if (shuffle_order)
 	{
 		
 		if (!scan->rs_inited)
@@ -979,7 +979,7 @@ heapgettup_pagemode(HeapScanDesc scan,
 			// rs_shuffled_block_ids = [0, 1280, 2560, 3840, 5120, 6400, 7680, 8960]
 			// rs_shuffled_block_ids = [0, 1280, 2560, 3840, 5120, 6400, 7680, 8960, 10240, 11520]
 			for (BlockNumber i = 0; i < scan->io_big_block_num; i++) 
-				scan->rs_shuffled_block_ids[i] = i * scan->io_big_block_num;
+				scan->rs_shuffled_block_ids[i] = i * scan->page_num_per_block;
 			
 			srand(time(0) + rand());
 
@@ -1571,6 +1571,7 @@ heap_beginscan_internal(Relation relation, Snapshot snapshot,
 	scan->shuffled_block_id_array_index = 0;
 	scan->io_big_block_num = 0;
 	scan->page_num_per_block = 0;
+	scan->drop_last = false;
 	// Lijie: add end
 
 

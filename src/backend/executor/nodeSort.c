@@ -29,22 +29,25 @@
 Model* init_model(int n_features) {
     Model* model = (Model *) palloc0(sizeof(Model));
 
-	/* for dblife 
+	/* for dblife */
+	// select * from dblife order by did;
 	model->total_loss = 0;
     model->batch_size = 500;
-    model->learning_rate = 0.5;
-    model->n_features = n_features;
+    model->learning_rate = 0.8;
+    model->n_features = 41270;
 	model->tuple_num = 0;
-	model->iter_num = 10; // to change
-	*/
+	model->iter_num = 50; // to change
+	
 
-	/* for forest */
+	/* for forest 
+	// select * from forest order by did;
 	model->total_loss = 0;
     model->batch_size = 1000;
     model->learning_rate = 0.5;
-    model->n_features = n_features;
+    model->n_features = 54;
 	model->tuple_num = 0;
 	model->iter_num = 50; // to change
+	*/
     
 	model->w = (double *) palloc0(sizeof(double) * n_features);
 
@@ -92,19 +95,19 @@ SGDTupleDesc* init_SGDTupleDesc(int col_num, int n_features) {
 	v double precision[],
 	label integer);
 	*/
-	/* for dblife 
+	/* for dblife */
 	sgd_tupledesc->k_col = 1; 
 	sgd_tupledesc->v_col = 2;
 	sgd_tupledesc->label_col = 3;
 	sgd_tupledesc->n_features = n_features;
-	*/
+	
 
-	/* for forest */ 
+	/* for forest  
 	sgd_tupledesc->k_col = -1; // from 0
 	sgd_tupledesc->v_col = 1;
 	sgd_tupledesc->label_col = 2;
 	sgd_tupledesc->n_features = n_features;
-
+	*/
 
     return sgd_tupledesc;
 }
@@ -234,6 +237,8 @@ void update_model(Model* model, SGDBatchState* batchstate) {
     // add graidents to the model and clear the batch gradients
     for (int i = 0; i < model->n_features; i++) {
         model->w[i] = model->w[i] - model->learning_rate * batchstate->gradients[i] / batchstate->tuple_num;
+		// model->w[i] = model->w[i] - model->learning_rate * 
+		// 			 (batchstate->gradients[i] / batchstate->tuple_num + 0.01 * model->w[i]);
         batchstate->gradients[i] = 0;
     }
 
@@ -581,10 +586,10 @@ ExecInitSort(Sort *node, EState *estate, int eflags)
     sgdstate->sgd_done = false;
 
 	// for forest
-    int n_features = 54;
+    // int n_features = 54;
     
 	// for dblife
-	// int n_features = 41270; 
+	int n_features = 41270; 
 
     sgdstate->model = init_model(n_features);
 	

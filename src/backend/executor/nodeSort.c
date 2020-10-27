@@ -21,6 +21,7 @@
 #include "utils/tuplesort.h"
 #include "utils/array.h"
 #include "time.h"
+#include "math.h"
 
 
 
@@ -129,9 +130,34 @@ void free_SGDTupleDesc(SGDTupleDesc* sgd_tupledesc) {
 	pfree(sgd_tupledesc);
 }
 
+void
+compute_tuple_gradient_loss_LR(SGDTuple* tp, Model* model, SGDBatchState* batchstate)
+{
+    double y = tp->class_label;
+    double* x = tp->features;
+
+    int n = model->n_features;
+
+    // compute gradients of the incoming tuple
+    double wx = 0;
+    for (int i = 0; i < n; i++)
+        wx = wx + model->w[i] * x[i];
+    double ywx = y * wx;
+
+	double tuple_loss = log(1 + exp(-ywx));
+
+	double g_base = -y * (1 - 1 / (1 + exp(-ywx)));
+
+    // Add this tuple's gradient to the previous gradients in this batch
+    for (int i = 0; i < n; i++) 
+        batchstate->gradients[i] = batchstate->gradients[i] + g_base * x[i];
+
+    // compute the loss of the incoming tuple
+    batchstate->loss = batchstate->loss + tuple_loss;
+}
 
 void
-compute_tuple_gradient_loss(SGDTuple* tp, Model* model, SGDBatchState* batchstate)
+compute_tuple_gradient_loss_SVM(SGDTuple* tp, Model* model, SGDBatchState* batchstate)
 {
     double y = tp->class_label;
     double* x = tp->features;
@@ -184,7 +210,7 @@ void perform_SGD(Model *model, SGDTuple* sgd_tuple, SGDBatchState* batchstate, i
         update_model(model, batchstate);
     else {
         // add the batch's gradients to the model, and reset the batch's gradients.
-        compute_tuple_gradient_loss(sgd_tuple, model, batchstate);
+        compute_tuple_gradient_loss_LR(sgd_tuple, model, batchstate);
         if (i == model->batch_size - 1) 
             update_model(model, batchstate);
         

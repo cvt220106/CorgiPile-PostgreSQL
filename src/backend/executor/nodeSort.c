@@ -68,6 +68,7 @@ SGDBatchState* init_SGDBatchState(int n_features) {
 	for (int i = 0; i < n_features; i++)
 		batchstate->gradients[i] = 0;
     batchstate->loss = 0;
+	batchstate->tuple_num = 0;
     return batchstate;
 }
 
@@ -112,6 +113,7 @@ void clear_SGDBatchState(SGDBatchState* batchstate, int n_features) {
 	for (int i = 0; i < n_features; i++)
 		batchstate->gradients[i] = 0;
     batchstate->loss = 0;
+	batchstate->tuple_num = 0;
 }
 
 void free_SGDBatchState(SGDBatchState* batchstate) {
@@ -154,8 +156,42 @@ compute_tuple_gradient_loss_LR(SGDTuple* tp, Model* model, SGDBatchState* batchs
 
     // compute the loss of the incoming tuple
     batchstate->loss = batchstate->loss + tuple_loss;
+	batchstate->tuple_num += 1;
 }
 
+
+void
+compute_tuple_gradient_loss_SVM(SGDTuple* tp, Model* model, SGDBatchState* batchstate)
+{
+    double y = tp->class_label;
+    double* x = tp->features;
+
+    int n = model->n_features;
+
+    // double loss = 0;
+    // double grad[n];
+
+    // compute gradients of the incoming tuple
+    double wx = 0;
+    for (int i = 0; i < n; i++)
+        wx = wx + model->w[i] * x[i];
+    double ywx = y * wx;
+
+    if (1 - ywx > 0) {
+        for (int i = 0; i < n; i++)
+			batchstate->gradients[i] = batchstate->gradients[i] - y * x[i];
+    }
+
+    // compute the loss of the incoming tuple
+    double tuple_loss = 1 - ywx;
+    if (tuple_loss < 0)
+        tuple_loss = 0;
+	
+    batchstate->loss = batchstate->loss + tuple_loss;
+	batchstate->tuple_num += 1;
+}
+
+/*
 void
 compute_tuple_gradient_loss_SVM(SGDTuple* tp, Model* model, SGDBatchState* batchstate)
 {
@@ -191,17 +227,19 @@ compute_tuple_gradient_loss_SVM(SGDTuple* tp, Model* model, SGDBatchState* batch
         tuple_loss = 0;
     batchstate->loss = batchstate->loss + tuple_loss;
 }
+*/
 
 void update_model(Model* model, SGDBatchState* batchstate) {
 
     // add graidents to the model and clear the batch gradients
     for (int i = 0; i < model->n_features; i++) {
-        model->w[i] = model->w[i] - model->learning_rate * batchstate->gradients[i];
+        model->w[i] = model->w[i] - model->learning_rate * batchstate->gradients[i] / batchstate->tuple_num;
         batchstate->gradients[i] = 0;
     }
 
     model->total_loss = model->total_loss + batchstate->loss;
     batchstate->loss = 0;
+	batchstate->tuple_num = 0;
 }
 
 
@@ -211,7 +249,7 @@ void perform_SGD(Model *model, SGDTuple* sgd_tuple, SGDBatchState* batchstate, i
     else {
         // add the batch's gradients to the model, and reset the batch's gradients.
         compute_tuple_gradient_loss_LR(sgd_tuple, model, batchstate);
-        if (i == model->batch_size - 1) 
+        if (i == model->batch_size - 1)
             update_model(model, batchstate);
         
     }   

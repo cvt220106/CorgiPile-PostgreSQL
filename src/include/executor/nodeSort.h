@@ -22,7 +22,8 @@
 typedef struct SGDBatchState
 {
 	double*		gradients;	  /* sum the gradient of each tuple in a batch, n_dim */		
-    double		loss;	      /* sum the loss of each tuple in a batch */		
+    double		loss;	      /* sum the loss of each tuple in a batch */
+	int         tuple_num;		
 } SGDBatchState;
 
 

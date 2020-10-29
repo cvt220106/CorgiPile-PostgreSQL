@@ -74,7 +74,8 @@
 
 
 // added by Lijie
-#define IOBigBlockSize 1 * 1024 * 1024 // 10MB
+// #define IOBigBlockSize 10 * 1024 * 1024 // 10MB
+#define IOBigBlockSize 80 * 1024 // 10MB
 // added end
 
 /* GUC variable */
@@ -1633,6 +1634,12 @@ heap_rescan(HeapScanDesc scan,
 	// Lijie: add begin
 	if (scan->rs_shuffled_block_ids != NULL)
 		pfree(scan->rs_shuffled_block_ids);
+	
+	scan->rs_shuffled_block_ids = NULL;
+	scan->shuffled_block_id_array_index = 0;
+	scan->io_big_block_num = 0;
+	scan->page_num_per_block = 0;
+	scan->drop_last = false;
 	// Lijie: add end
 }
 

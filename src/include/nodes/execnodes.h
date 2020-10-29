@@ -1194,6 +1194,9 @@ typedef struct ScanState
 	Relation	ss_currentRelation;
 	HeapScanDesc ss_currentScanDesc;
 	TupleTableSlot *ss_ScanTupleSlot;
+
+	// added by Lijie
+	int rescan_count;
 } ScanState;
 
 /*

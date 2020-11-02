@@ -21,6 +21,16 @@
 #include "utils/tuplesort.h"
 
 
+
+
+void clear_buffer(Tuplesortstate* tuplesortstate)
+{
+	// We may do some other clearing jobs
+	// e.g., need to delete state->memtuples to avoid memory leak
+	clear_tupleshufflesort_state(tuplesortstate);
+
+}
+
 /* ----------------------------------------------------------------
  *		ExecSort
  *
@@ -38,106 +48,99 @@
 TupleTableSlot *
 ExecSort(SortState *node)
 {
+
+	// case 1: buffer_empty, going to put tuples into it.
+	// case 2: buffer is filled with tuples.
+	// case 3: buffer is half-filled with tuples. The last tuple cannot fill the buffer.
+	// case 4: buffer_empty, last tuple
 	EState	   *estate;
 	ScanDirection dir;
-	Tuplesortstate *tuplesortstate;
+	Tuplesortstate *state;
 	TupleTableSlot *slot;
 
 	/*
 	 * get state info from node
 	 */
-	SO1_printf("ExecSort: %s\n",
-			   "entering routine");
+	// SO1_printf("ExecSort: %s\n",
+	// 		   "entering routine");
 
 	estate = node->ss.ps.state;
 	dir = estate->es_direction;
-	tuplesortstate = (Tuplesortstate *) node->tuplesortstate;
+	state = (Tuplesortstate *) node->tuplesortstate;
 
+	PlanState  *outerNode;
 	/*
 	 * If first time through, read all tuples from outer plan and pass them to
 	 * tuplesort.c. Subsequent calls just fetch tuples from tuplesort.
 	 */
 
-	if (!node->sort_Done)
+	if (state == NULL) // Going to init // can be put into init() function
 	{
 		Sort	   *plannode = (Sort *) node->ss.ps.plan;
-		PlanState  *outerNode;
 		TupleDesc	tupDesc;
 
-		SO1_printf("ExecSort: %s\n",
-				   "sorting subplan");
+		// SO1_printf("ExecShuffleSort: %s\n",
+		// 		   "shuffle_sorting subplan");
 
 		/*
 		 * Want to scan subplan in the forward direction while creating the
 		 * sorted data.
 		 */
-		estate->es_direction = ForwardScanDirection;
+		// estate->es_direction = ShuffleScanDirection;
 
 		/*
 		 * Initialize tuplesort module.
 		 */
-		SO1_printf("ExecSort: %s\n",
-				   "calling tuplesort_begin");
 
+		// outerNode = ShuffleScanNode
 		outerNode = outerPlanState(node);
 		tupDesc = ExecGetResultType(outerNode);
 
-		tuplesortstate = tuplesort_begin_heap(tupDesc,
-											  plannode->numCols,
-											  plannode->sortColIdx,
-											  plannode->sortOperators,
-											  plannode->collations,
-											  plannode->nullsFirst,
-											  work_mem,
-											  node->randomAccess);
-		if (node->bounded)
-			tuplesort_set_bound(tuplesortstate, node->bound);
-		node->tuplesortstate = (void *) tuplesortstate;
+		// init buffer
+		// work_mem = 1024 default
+		state = tupleshufflesort_begin_heap(tupDesc, work_mem);
+                                              
+		node->tuplesortstate = (void *) state;
 
-		/*
-		 * Scan the subplan and feed all the tuples to tuplesort.
-		 */
-
-		for (;;)
-		{
-			slot = ExecProcNode(outerNode);
-
-			if (TupIsNull(slot))
-				break;
-
-			tuplesort_puttupleslot(tuplesortstate, slot);
-		}
-
-		/*
-		 * Complete the sort.
-		 */
-		tuplesort_performsort(tuplesortstate);
-
-		/*
-		 * restore to user specified direction
-		 */
-		estate->es_direction = dir;
-
-		/*
-		 * finally set the sorted flag to true
-		 */
-		node->sort_Done = true;
-		node->bounded_Done = node->bounded;
-		node->bound_Done = node->bound;
-		SO1_printf("ExecSort: %s\n", "sorting done");
 	}
 
-	SO1_printf("ExecSort: %s\n",
-			   "retrieving tuple from tuplesort");
+	if (node->buffer_empty) {
+		bool buffer_full = false;
 
-	/*
-	 * Get the first or next tuple from tuplesort. Returns NULL if no more
-	 * tuples.
-	 */
+		while(true) {
+      		// fetch a tuple from the ShuffleScanNode 
+      		slot = ExecProcNode(outerNode);
+      		// put_tuple_into_buffer(tuple, buffer);
+
+			if (!TupIsNull(slot)) {
+				buffer_full = tupleshufflesort_puttupleslot(state, slot);
+			} 
+			else {
+				node->eof_reach = true;
+				if (is_shuffle_buffer_emtpy(state)) {
+					return NULL; // return slot = null;
+				}
+				//tupleshufflesort_set_end(state);
+			}
+			
+			if (buffer_full || TupIsNull(slot)) {
+				tupleshufflesort_performshuffle(state);
+				node->buffer_empty = false;
+				break;
+			}	
+   		}
+	}
+	
+
 	slot = node->ss.ps.ps_ResultTupleSlot;
-	(void) tuplesort_gettupleslot(tuplesortstate,
-								  ScanDirectionIsForward(dir),
-								  slot);
+
+	// buffer_full or TupIsNull
+	bool tuple_left = tupleshufflesort_gettupleslot(state, slot);
+	if (tuple_left == 0) {
+		node->buffer_empty = true;
+		// clear_buffer(); set current_count = 0
+	}
+
 	return slot;
 }
 
@@ -153,14 +156,14 @@ ExecInitSort(Sort *node, EState *estate, int eflags)
 {
 	SortState  *sortstate;
 
-	SO1_printf("ExecInitSort: %s\n",
-			   "initializing sort node");
+	// SO1_printf("ExecInitSort: %s\n",
+	// 		   "initializing sort node");
 
 	/*
 	 * create state structure
 	 */
 	sortstate = makeNode(SortState);
-	sortstate->ss.ps.plan = (Plan *) node;
+	sortstate->ss.ps.plan = (Plan *) node; // change to node->plan
 	sortstate->ss.ps.state = estate;
 
 	/*
@@ -168,13 +171,14 @@ ExecInitSort(Sort *node, EState *estate, int eflags)
 	 * mark/restore.  We also prefer to materialize the sort output if we
 	 * might be called on to rewind and replay it many times.
 	 */
-	sortstate->randomAccess = (eflags & (EXEC_FLAG_REWIND |
-										 EXEC_FLAG_BACKWARD |
-										 EXEC_FLAG_MARK)) != 0;
-
-	sortstate->bounded = false;
-	sortstate->sort_Done = false;
+	// sortstate->randomAccess = (eflags & (EXEC_FLAG_REWIND |
+	// 									 EXEC_FLAG_BACKWARD |
+	// 									 EXEC_FLAG_MARK)) != 0;
+	
 	sortstate->tuplesortstate = NULL;
+	sortstate->shuffle_sort_Done = false;
+	sortstate->buffer_empty = true;
+	sortstate->eof_reach = false;
 
 	/*
 	 * Miscellaneous initialization
@@ -232,12 +236,13 @@ ExecEndSort(SortState *node)
 	/* must drop pointer to sort result tuple */
 	ExecClearTuple(node->ss.ps.ps_ResultTupleSlot);
 
+	clear_buffer(node->tuplesortstate);
 	/*
 	 * Release tuplesort resources
 	 */
 	if (node->tuplesortstate != NULL)
-		tuplesort_end((Tuplesortstate *) node->tuplesortstate);
-	node->tuplesortstate = NULL;
+		tupleshufflesort_end((Tuplesortstate *) node->tuplesortstate);
+	pfree(node->tuplesortstate);
 
 	/*
 	 * shut down the subplan
@@ -260,10 +265,10 @@ ExecSortMarkPos(SortState *node)
 	/*
 	 * if we haven't sorted yet, just return
 	 */
-	if (!node->sort_Done)
+	if (!node->shuffle_sort_Done)
 		return;
 
-	tuplesort_markpos((Tuplesortstate *) node->tuplesortstate);
+	tupleshufflesort_markpos((Tuplesortstate *) node->tuplesortstate);
 }
 
 /* ----------------------------------------------------------------
@@ -278,13 +283,13 @@ ExecSortRestrPos(SortState *node)
 	/*
 	 * if we haven't sorted yet, just return.
 	 */
-	if (!node->sort_Done)
+	if (!node->shuffle_sort_Done)
 		return;
 
 	/*
 	 * restore the scan to the previously marked position
 	 */
-	tuplesort_restorepos((Tuplesortstate *) node->tuplesortstate);
+	tupleshufflesort_restorepos((Tuplesortstate *) node->tuplesortstate);
 }
 
 void
@@ -295,8 +300,8 @@ ExecReScanSort(SortState *node)
 	 * NULL then it will be re-scanned by ExecProcNode, else no reason to
 	 * re-scan it at all.
 	 */
-	if (!node->sort_Done)
-		return;
+	// if (!node->sort_Done)
+	// 	return;
 
 	/* must drop pointer to sort result tuple */
 	ExecClearTuple(node->ss.ps.ps_ResultTupleSlot);
@@ -308,13 +313,10 @@ ExecReScanSort(SortState *node)
 	 *
 	 * Otherwise we can just rewind and rescan the sorted output.
 	 */
-	if (node->ss.ps.lefttree->chgParam != NULL ||
-		node->bounded != node->bounded_Done ||
-		node->bound != node->bound_Done ||
-		!node->randomAccess)
+	if (node->ss.ps.lefttree->chgParam != NULL)
 	{
-		node->sort_Done = false;
-		tuplesort_end((Tuplesortstate *) node->tuplesortstate);
+		node->shuffle_sort_Done = false;
+		tupleshufflesort_end((Tuplesortstate *) node->tuplesortstate);
 		node->tuplesortstate = NULL;
 
 		/*
@@ -325,5 +327,5 @@ ExecReScanSort(SortState *node)
 			ExecReScan(node->ss.ps.lefttree);
 	}
 	else
-		tuplesort_rescan((Tuplesortstate *) node->tuplesortstate);
+		tupleshufflesort_rescan((Tuplesortstate *) node->tuplesortstate);
 }

@@ -57,54 +57,61 @@ typedef struct Tuplesortstate Tuplesortstate;
  * The "index_hash" API is similar to index_btree, but the tuples are
  * actually sorted by their hash codes not the raw data.
  */
+extern void tupleshufflesort_set_end(Tuplesortstate *state);
 
-extern Tuplesortstate *tuplesort_begin_heap(TupleDesc tupDesc,
-					 int nkeys, AttrNumber *attNums,
-					 Oid *sortOperators, Oid *sortCollations,
-					 bool *nullsFirstFlags,
-					 int workMem, bool randomAccess);
-extern Tuplesortstate *tuplesort_begin_cluster(TupleDesc tupDesc,
+extern Tuplesortstate *tupleshufflesort_begin_heap(TupleDesc tupDesc, int workMem);
+extern Tuplesortstate *tupleshufflesort_begin_cluster(TupleDesc tupDesc,
 						Relation indexRel,
 						int workMem, bool randomAccess);
-extern Tuplesortstate *tuplesort_begin_index_btree(Relation indexRel,
+extern Tuplesortstate *tupleshufflesort_begin_index_btree(Relation indexRel,
 							bool enforceUnique,
 							int workMem, bool randomAccess);
-extern Tuplesortstate *tuplesort_begin_index_hash(Relation indexRel,
+extern Tuplesortstate *tupleshufflesort_begin_index_hash(Relation indexRel,
 						   uint32 hash_mask,
 						   int workMem, bool randomAccess);
-extern Tuplesortstate *tuplesort_begin_datum(Oid datumType,
-					  Oid sortOperator, Oid sortCollation,
+extern Tuplesortstate *tupleshufflesort_begin_datum(Oid datumType,
+					  Oid shuffleSortOperator, Oid shuffleSortCollation,
 					  bool nullsFirstFlag,
 					  int workMem, bool randomAccess);
 
-extern void tuplesort_set_bound(Tuplesortstate *state, int64 bound);
+extern void tupleshufflesort_set_bound(Tuplesortstate *state, int64 bound);
 
-extern void tuplesort_puttupleslot(Tuplesortstate *state,
-					   TupleTableSlot *slot);
-extern void tuplesort_putheaptuple(Tuplesortstate *state, HeapTuple tup);
-extern void tuplesort_putindextuple(Tuplesortstate *state, IndexTuple tuple);
-extern void tuplesort_putdatum(Tuplesortstate *state, Datum val,
+extern void tupleshufflesort_putheaptuple(Tuplesortstate *state, HeapTuple tup);
+extern void tupleshufflesort_putindextuple(Tuplesortstate *state, IndexTuple tuple);
+extern void tupleshufflesort_putdatum(Tuplesortstate *state, Datum val,
 				   bool isNull);
 
-extern void tuplesort_performsort(Tuplesortstate *state);
+extern void tupleshufflesort_performsort(Tuplesortstate *state);
 
-extern bool tuplesort_gettupleslot(Tuplesortstate *state, bool forward,
+// lijie: begin
+extern void tupleshufflesort_performshuffle(Tuplesortstate *state);
+
+
+extern void clear_tupleshufflesort_state(Tuplesortstate* tuplesortstate);
+
+extern bool tupleshufflesort_puttupleslot(Tuplesortstate *state, TupleTableSlot *slot);
+
+extern bool is_shuffle_buffer_emtpy(Tuplesortstate *state);
+
+// lijie: end
+
+extern bool tupleshufflesort_gettupleslot(Tuplesortstate *state, 
 					   TupleTableSlot *slot);
-extern HeapTuple tuplesort_getheaptuple(Tuplesortstate *state, bool forward,
+extern HeapTuple tupleshufflesort_getheaptuple(Tuplesortstate *state, bool forward,
 					   bool *should_free);
-extern IndexTuple tuplesort_getindextuple(Tuplesortstate *state, bool forward,
+extern IndexTuple tupleshufflesort_getindextuple(Tuplesortstate *state, bool forward,
 						bool *should_free);
-extern bool tuplesort_getdatum(Tuplesortstate *state, bool forward,
+extern bool tupleshufflesort_getdatum(Tuplesortstate *state, bool forward,
 				   Datum *val, bool *isNull);
 
-extern void tuplesort_end(Tuplesortstate *state);
+extern void tupleshufflesort_end(Tuplesortstate *state);
 
-extern void tuplesort_get_stats(Tuplesortstate *state,
+extern void tupleshufflesort_get_stats(Tuplesortstate *state,
 					const char **sortMethod,
 					const char **spaceType,
 					long *spaceUsed);
 
-extern int	tuplesort_merge_order(long allowedMem);
+extern int	tupleshufflesort_merge_order(long allowedMem);
 
 /*
  * These routines may only be called if randomAccess was specified 'true'.
@@ -112,8 +119,8 @@ extern int	tuplesort_merge_order(long allowedMem);
  * randomAccess was specified.
  */
 
-extern void tuplesort_rescan(Tuplesortstate *state);
-extern void tuplesort_markpos(Tuplesortstate *state);
-extern void tuplesort_restorepos(Tuplesortstate *state);
+extern void tupleshufflesort_rescan(Tuplesortstate *state);
+// extern void tupleshufflesort_markpos(Tuplesortstate *state);
+// extern void tupleshufflesort_restorepos(Tuplesortstate *state);
 
-#endif   /* TUPLESORT_H */
+#endif   /* TUPLESHUFFLESORT_H */

@@ -202,7 +202,7 @@ typedef enum
  */
 struct Tuplesortstate
 {
-	TupShuffleSortStatus status;		/* enumerated value as shown above */
+	// TupShuffleSortStatus status;		/* enumerated value as shown above */
 	// int			nKeys;			/* number of columns in sort key */
 	// bool		randomAccess;	/* did caller request random access? */
 	// bool		bounded;		/* did caller specify a maximum number of
@@ -233,7 +233,7 @@ struct Tuplesortstate
 	 * state->availMem must be decreased by the amount of space used for the
 	 * tuple copy (note the SortTuple struct itself is not counted).
 	 */
-	void		(*copytup) (TupleShuffleSortState *state, ShuffleSortTuple *stup, void *tup);
+	void		(*copytup) (Tuplesortstate *state, SortTuple *stup, void *tup);
 
 	/*
 	 * Function to write a stored tuple onto tape.  The representation of the
@@ -333,8 +333,8 @@ struct Tuplesortstate
 
 	/* markpos_xxx holds marked position for mark and restore */
 	// long		markpos_block;	/* tape block# (only used if SORTEDONTAPE) */
-	// int			markpos_offset; /* saved "current", or offset in tape block */
-	// bool		markpos_eof;	/* saved "eof_reached" */
+	int			markpos_offset; /* saved "current", or offset in tape block */
+	bool		markpos_eof;	/* saved "eof_reached" */
 
 	/*
 	 * These variables are specific to the MinimalTuple case; they are set by
@@ -382,7 +382,7 @@ struct Tuplesortstate
 	/*
 	 * Resource snapshot for time of sort start.
 	 */
-#ifdef TRACE_SHUFFLE_SORT
+#ifdef TRACE_SORT
 	PGRUsage	ru_start;
 #endif
 };
@@ -437,6 +437,7 @@ struct Tuplesortstate
  * a lot better than what we were doing before 7.3.
  */
 
+static void copytup_heap(Tuplesortstate *state, SortTuple *stup, void *tup);
 /* When using this macro, beware of double evaluation of len */
 // #define LogicalTapeReadExact(tapeset, tapenum, ptr, len) \
 // 	do { \
@@ -445,24 +446,24 @@ struct Tuplesortstate
 // 	} while(0)
 
 
-static TupleShuffleSortState *tupleshufflesort_begin_common(int workMem);
-static void puttuple_common(TupleShuffleSortState *state, ShuffleSortTuple *tuple);
+// static Tuplesortstate *tupleshufflesort_begin_common(int workMem);
+// static void puttuple_common(Tuplesortstate *state, SortTuple *tuple);
 
-static void tupleshufflesort_heap_insert(TupleShuffleSortState *state, ShuffleSortTuple *tuple,
-					  int tupleindex, bool checkIndex);
+// static void tuplesort_heap_insert(Tuplesortstate *state, SortTuple *tuple,
+// 					  int tupleindex, bool checkIndex);
 
-static unsigned int getlen(TupleShuffleSortState *state, int tapenum, bool eofOK);
+// static unsigned int getlen(Tuplesortstate *state, int tapenum, bool eofOK);
 
-static void free_sort_tuple(TupleShuffleSortState *state, ShuffleSortTuple *stup);
+// static void free_sort_tuple(Tuplesortstate *state, SortTuple *stup);
 
 // Lijie: add begin
-static void shuffle_tuple(ShuffleSortTuple *a, size_t n, TupleShuffleSortState *state);
+// static void shuffle_tuple(SortTuple *a, size_t n);
 // Lijie: add end
 
 
 // Lijie: add begin
 // shuffle_tuple(state->memtuples, state->memtupcount, state);
-static void
+void
 shuffle_tuple(SortTuple *a, size_t n)
 {
 	srand(time(0) + rand());
@@ -545,11 +546,11 @@ puttuple_into_buffer(Tuplesortstate *state, SortTuple *tuple) {
 	return buffer_full;
 }
 
-void
-tupleshufflesort_set_end(Tuplesortstate *state)
-{
-	state->eof_reached = true;
-}
+// void
+// tuplesort_end(Tuplesortstate *state)
+// {
+// 	state->eof_reached = true;
+// }
 
 // Lijie add begin
 /*
@@ -648,7 +649,7 @@ tupleshufflesort_begin_common(int workMem)
 		pg_rusage_init(&state->ru_start);
 #endif
 
-	state->status = TSS_INITIAL;
+	// state->status = TSS_INITIAL;
 	// state->randomAccess = randomAccess;
 	// state->bounded = false;
 	// state->boundUsed = false;
@@ -690,12 +691,7 @@ tupleshufflesort_begin_common(int workMem)
 
 // nkeys = number of sort-key columns
 Tuplesortstate *
-tupleShufflesort_begin_heap(TupleDesc tupDesc,
-					 // int nkeys, 
-					 // AttrNumber *attNums,
-					 // Oid *sortOperators, Oid *sortCollations,
-					 // bool *nullsFirstFlags,
-					 int workMem)//, bool randomAccess)
+tupleshufflesort_begin_heap(TupleDesc tupDesc, int workMem)
 {
 	Tuplesortstate *state = tupleshufflesort_begin_common(workMem);
 	MemoryContext oldcontext;
@@ -750,13 +746,13 @@ tupleshufflesort_end(Tuplesortstate *state)
 {
 	/* context swap probably not needed, but let's be safe */
 	MemoryContext oldcontext = MemoryContextSwitchTo(state->shufflesortcontext);
-#ifdef TRACE_SHUFFLE_SORT
-	long		spaceUsed;
-	if (state->tapeset)
-		spaceUsed = LogicalTapeSetBlocks(state->tapeset);
-	else
-		spaceUsed = (state->allowedMem - state->availMem + 1023) / 1024;
-#endif
+// #ifdef TRACE_SHUFFLE_SORT
+// 	long		spaceUsed;
+// 	if (state->tapeset)
+// 		spaceUsed = LogicalTapeSetBlocks(state->tapeset);
+// 	else
+// 		spaceUsed = (state->allowedMem - state->availMem + 1023) / 1024;
+// #endif
 	/*
 	 * Delete temporary "tape" files, if any.
 	 *
@@ -765,24 +761,24 @@ tupleshufflesort_end(Tuplesortstate *state)
 	 */
 	// if (state->tapeset)
 	// 	LogicalTapeSetClose(state->tapeset);
-#ifdef TRACE_SHUFFLE_SORT
-	if (trace_shuffle_sort)
-	{
-		if (state->tapeset)
-			elog(LOG, "external sort ended, %ld disk blocks used: %s",
-				 spaceUsed, pg_rusage_show(&state->ru_start));
-		else
-			elog(LOG, "internal sort ended, %ld KB used: %s",
-				 spaceUsed, pg_rusage_show(&state->ru_start));
-	}
-	TRACE_POSTGRESQL_SORT_DONE(state->tapeset != NULL, spaceUsed);
-#else
-	/*
-	 * If you disabled TRACE_SORT, you can still probe sort__done, but you
-	 * ain't getting space-used stats.
-	 */
-	TRACE_POSTGRESQL_SORT_DONE(state->tapeset != NULL, 0L);
-#endif
+// #ifdef TRACE_SHUFFLE_SORT
+// 	if (trace_shuffle_sort)
+// 	{
+// 		if (state->tapeset)
+// 			elog(LOG, "external sort ended, %ld disk blocks used: %s",
+// 				 spaceUsed, pg_rusage_show(&state->ru_start));
+// 		else
+// 			elog(LOG, "internal sort ended, %ld KB used: %s",
+// 				 spaceUsed, pg_rusage_show(&state->ru_start));
+// 	}
+// 	TRACE_POSTGRESQL_SORT_DONE(state->tapeset != NULL, spaceUsed);
+// #else
+// 	/*
+// 	 * If you disabled TRACE_SORT, you can still probe sort__done, but you
+// 	 * ain't getting space-used stats.
+// 	 */
+// 	TRACE_POSTGRESQL_SORT_DONE(state->tapeset != NULL, 0L);
+// #endif
 	/* Free any execution state created for CLUSTER case */
 	if (state->estate != NULL)
 	{
@@ -829,67 +825,67 @@ tupleshufflesort_puttupleslot(Tuplesortstate *state, TupleTableSlot *slot)
  *
  * Note that the input data is always copied; the caller need not save it.
  */
-void
-tuplesort_puttupleslot(TupleShuffleSortState *state, TupleTableSlot *slot)
-{
-	MemoryContext oldcontext = MemoryContextSwitchTo(state->shufflesortcontext);
-	ShuffleSortTuple	stup;
-	/*
-	 * Copy the given tuple into memory we control, and decrease availMem.
-	 * Then call the common code.
-	 */
-	COPYTUP(state, &stup, (void *) slot);
-	puttuple_common(state, &stup);
-	MemoryContextSwitchTo(oldcontext);
-}
+// void
+// tupleshufflesort_puttupleslot(Tuplesortstate *state, TupleTableSlot *slot)
+// {
+// 	MemoryContext oldcontext = MemoryContextSwitchTo(state->shufflesortcontext);
+// 	SortTuple	stup;
+// 	/*
+// 	 * Copy the given tuple into memory we control, and decrease availMem.
+// 	 * Then call the common code.
+// 	 */
+// 	COPYTUP(state, &stup, (void *) slot);
+// 	puttuple_common(state, &stup);
+// 	MemoryContextSwitchTo(oldcontext);
+// }
 /*
  * Accept one tuple while collecting input data for sort.
  *
  * Note that the input data is always copied; the caller need not save it.
  */
-void
-tupleshufflesort_putheaptuple(TupleShuffleSortState *state, HeapTuple tup)
-{
-	MemoryContext oldcontext = MemoryContextSwitchTo(state->shufflesortcontext);
-	ShuffleSortTuple	stup;
-	/*
-	 * Copy the given tuple into memory we control, and decrease availMem.
-	 * Then call the common code.
-	 */
-	COPYTUP(state, &stup, (void *) tup);
-	puttuple_common(state, &stup);
-	MemoryContextSwitchTo(oldcontext);
-}
+// void
+// tupleshufflesort_putheaptuple(Tuplesortstate *state, HeapTuple tup)
+// {
+// 	MemoryContext oldcontext = MemoryContextSwitchTo(state->shufflesortcontext);
+// 	SortTuple	stup;
+// 	/*
+// 	 * Copy the given tuple into memory we control, and decrease availMem.
+// 	 * Then call the common code.
+// 	 */
+// 	COPYTUP(state, &stup, (void *) tup);
+// 	puttuple_common(state, &stup);
+// 	MemoryContextSwitchTo(oldcontext);
+// }
 /*
  * Accept one Datum while collecting input data for sort.
  *
  * If the Datum is pass-by-ref type, the value will be copied.
  */
-void
-tupleshufflesort_putdatum(TupleShuffleSortState *state, Datum val, bool isNull)
-{
-	MemoryContext oldcontext = MemoryContextSwitchTo(state->shufflesortcontext);
-	ShuffleSortTuple	stup;
-	/*
-	 * If it's a pass-by-reference value, copy it into memory we control, and
-	 * decrease availMem.  Then call the common code.
-	 */
-	if (isNull || state->datumTypeByVal)
-	{
-		stup.datum1 = val;
-		stup.isnull1 = isNull;
-		stup.tuple = NULL;		/* no separate storage */
-	}
-	else
-	{
-		stup.datum1 = datumCopy(val, false, state->datumTypeLen);
-		stup.isnull1 = false;
-		stup.tuple = DatumGetPointer(stup.datum1);
-		USEMEM(state, GetMemoryChunkSpace(stup.tuple));
-	}
-	puttuple_common(state, &stup);
-	MemoryContextSwitchTo(oldcontext);
-}
+// void
+// tupleshufflesort_putdatum(Tuplesortstate *state, Datum val, bool isNull)
+// {
+// 	MemoryContext oldcontext = MemoryContextSwitchTo(state->shufflesortcontext);
+// 	SortTuple	stup;
+// 	/*
+// 	 * If it's a pass-by-reference value, copy it into memory we control, and
+// 	 * decrease availMem.  Then call the common code.
+// 	 */
+// 	if (isNull || state->datumTypeByVal)
+// 	{
+// 		stup.datum1 = val;
+// 		stup.isnull1 = isNull;
+// 		stup.tuple = NULL;		/* no separate storage */
+// 	}
+// 	else
+// 	{
+// 		stup.datum1 = datumCopy(val, false, state->datumTypeLen);
+// 		stup.isnull1 = false;
+// 		stup.tuple = DatumGetPointer(stup.datum1);
+// 		USEMEM(state, GetMemoryChunkSpace(stup.tuple));
+// 	}
+// 	puttuple_common(state, &stup);
+// 	MemoryContextSwitchTo(oldcontext);
+// }
 void
 tupleshufflesort_performshuffle(Tuplesortstate *state) 
 {
@@ -1080,11 +1076,11 @@ tupleshufflesort_gettupleslot(TupleShuffleSortState *state, bool forward,
  * caller must pfree the returned tuple when done with it.
  */
 HeapTuple
-tupleshufflesort_getheaptuple(TupleShuffleSortState *state, bool forward, bool *should_free)
+tupleshufflesort_getheaptuple(Tuplesortstate *state, bool forward, bool *should_free)
 {
 	MemoryContext oldcontext = MemoryContextSwitchTo(state->shufflesortcontext);
-	ShuffleSortTuple	stup;
-	if (!tupleshufflesort_gettuple_common(state, forward, &stup, should_free))
+	SortTuple	stup;
+	if (!tupleshufflesort_gettuple_common(state, &stup))
 		stup.tuple = NULL;
 	MemoryContextSwitchTo(oldcontext);
 	return stup.tuple;
@@ -1096,12 +1092,12 @@ tupleshufflesort_getheaptuple(TupleShuffleSortState *state, bool forward, bool *
  * printable summary information about how the sort was performed.
  * spaceUsed is measured in kilobytes.
  */
-void
-tupleshufflesort_get_stats(TupleShuffleSortState *state,
-					const char **sortMethod,
-					const char **spaceType,
-					long *spaceUsed)
-{
+// void
+// tupleshufflesort_get_stats(Tuplesortstate *state,
+// 					const char **sortMethod,
+// 					const char **spaceType,
+// 					long *spaceUsed)
+// {
 	/*
 	 * Note: it might seem we should provide both memory and disk usage for a
 	 * disk-based sort.  However, the current code doesn't track memory space
@@ -1117,29 +1113,29 @@ tupleshufflesort_get_stats(TupleShuffleSortState *state,
 	// 	*spaceUsed = LogicalTapeSetBlocks(state->tapeset) * (BLCKSZ / 1024);
 	// }
 	// else
+	// // {
+	// 	*spaceType = "Memory";
+	// 	*spaceUsed = (state->allowedMem - state->availMem + 1023) / 1024;
+	// // }
+	// switch (state->status)
 	// {
-		*spaceType = "Memory";
-		*spaceUsed = (state->allowedMem - state->availMem + 1023) / 1024;
+	// 	case TSS_SORTEDINMEM:
+	// 		if (state->boundUsed)
+	// 			*sortMethod = "top-N heapsort";
+	// 		else
+	// 			*sortMethod = "quicksort";
+	// 		break;
+	// 	case TSS_SORTEDONTAPE:
+	// 		*sortMethod = "external sort";
+	// 		break;
+	// 	case TSS_FINALMERGE:
+	// 		*sortMethod = "external merge";
+	// 		break;
+	// 	default:
+	// 		*sortMethod = "still in progress";
+	// 		break;
 	// }
-	switch (state->status)
-	{
-		case TSS_SORTEDINMEM:
-			if (state->boundUsed)
-				*sortMethod = "top-N heapsort";
-			else
-				*sortMethod = "quicksort";
-			break;
-		case TSS_SORTEDONTAPE:
-			*sortMethod = "external sort";
-			break;
-		case TSS_FINALMERGE:
-			*sortMethod = "external merge";
-			break;
-		default:
-			*sortMethod = "still in progress";
-			break;
-	}
-}
+// }
 /*
  * Heap manipulation routines, per Knuth's Algorithm 5.2.3H.
  *
@@ -1153,31 +1149,31 @@ tupleshufflesort_get_stats(TupleShuffleSortState *state,
 /*
  * Inline-able copy of FunctionCall2Coll() to save some cycles in sorting.
  */
-static inline Datum
-myFunctionCall2Coll(FmgrInfo *flinfo, Oid collation, Datum arg1, Datum arg2)
-{
-	FunctionCallInfoData fcinfo;
-	Datum		result;
-	InitFunctionCallInfoData(fcinfo, flinfo, 2, collation, NULL, NULL);
-	fcinfo.arg[0] = arg1;
-	fcinfo.arg[1] = arg2;
-	fcinfo.argnull[0] = false;
-	fcinfo.argnull[1] = false;
-	result = FunctionCallInvoke(&fcinfo);
-	/* Check for null result, since caller is clearly not expecting one */
-	if (fcinfo.isnull)
-		elog(ERROR, "function %u returned NULL", fcinfo.flinfo->fn_oid);
-	return result;
-}
+// static inline Datum
+// myFunctionCall2Coll(FmgrInfo *flinfo, Oid collation, Datum arg1, Datum arg2)
+// {
+// 	FunctionCallInfoData fcinfo;
+// 	Datum		result;
+// 	InitFunctionCallInfoData(fcinfo, flinfo, 2, collation, NULL, NULL);
+// 	fcinfo.arg[0] = arg1;
+// 	fcinfo.arg[1] = arg2;
+// 	fcinfo.argnull[0] = false;
+// 	fcinfo.argnull[1] = false;
+// 	result = FunctionCallInvoke(&fcinfo);
+// 	/* Check for null result, since caller is clearly not expecting one */
+// 	if (fcinfo.isnull)
+// 		elog(ERROR, "function %u returned NULL", fcinfo.flinfo->fn_oid);
+// 	return result;
+// }
 /*
  * Convenience routine to free a tuple previously loaded into sort memory
  */
-static void
-free_sort_tuple(Tuplesortstate *state, SortTuple *stup)
-{
-	FREEMEM(state, GetMemoryChunkSpace(stup->tuple));
-	pfree(stup->tuple);
-}
+// static void
+// free_sort_tuple(Tuplesortstate *state, SortTuple *stup)
+// {
+// 	FREEMEM(state, GetMemoryChunkSpace(stup->tuple));
+// 	pfree(stup->tuple);
+// }
 
 
 static void
@@ -1208,9 +1204,9 @@ copytup_heap(Tuplesortstate *state, SortTuple *stup, void *tup)
  * tuplesort_markpos	- saves current position in the merged sort file
  */
 void
-tuplesort_markpos(Tuplesortstate *state)
+tupleshufflesort_markpos(Tuplesortstate *state)
 {
-	MemoryContext oldcontext = MemoryContextSwitchTo(state->sortcontext);
+	MemoryContext oldcontext = MemoryContextSwitchTo(state->shufflesortcontext);
 
 	// Assert(state->randomAccess);
 
@@ -1228,7 +1224,7 @@ tuplesort_markpos(Tuplesortstate *state)
 void
 tupleshufflesort_restorepos(Tuplesortstate *state)
 {
-	MemoryContext oldcontext = MemoryContextSwitchTo(state->sortcontext);
+	MemoryContext oldcontext = MemoryContextSwitchTo(state->shufflesortcontext);
 
 	// Assert(state->randomAccess);
 	state->current = state->markpos_offset;
@@ -1240,7 +1236,7 @@ tupleshufflesort_restorepos(Tuplesortstate *state)
 void
 tupleshufflesort_rescan(Tuplesortstate *state)
 {
-	MemoryContext oldcontext = MemoryContextSwitchTo(state->sortcontext);
+	MemoryContext oldcontext = MemoryContextSwitchTo(state->shufflesortcontext);
 
 	// Assert(state->randomAccess);
 
@@ -1249,9 +1245,6 @@ tupleshufflesort_rescan(Tuplesortstate *state)
 	state->markpos_offset = 0;
 	state->markpos_eof = false;
 	state->memtupcount = 0;
-	break;
-
-	
 
 	MemoryContextSwitchTo(oldcontext);
 }
@@ -1259,268 +1252,138 @@ tupleshufflesort_rescan(Tuplesortstate *state)
 
 
 
-// for other operators like nodeAgg.c
 
-Tuplesortstate *
-tuplesort_begin_datum(Oid datumType, Oid sortOperator, Oid sortCollation,
+// for covering the apis of tuplesort.c
+
+
+
+
+Tuplesortstate *tuplesort_begin_heap(TupleDesc tupDesc,
+					 int nkeys, AttrNumber *attNums,
+					 Oid *sortOperators, Oid *sortCollations,
+					 bool *nullsFirstFlags,
+					 int workMem, bool randomAccess)
+{
+	return NULL;
+}
+
+Tuplesortstate *tuplesort_begin_cluster(TupleDesc tupDesc,
+						Relation indexRel,
+						int workMem, bool randomAccess) 
+{
+	return NULL;
+}
+
+Tuplesortstate *tuplesort_begin_index_btree(Relation indexRel,
+							bool enforceUnique,
+							int workMem, bool randomAccess)
+{
+	return NULL;
+}
+
+Tuplesortstate *tuplesort_begin_index_hash(Relation indexRel,
+						   uint32 hash_mask,
+						   int workMem, bool randomAccess)
+{
+	return NULL;
+}
+
+Tuplesortstate *tuplesort_begin_datum(Oid datumType,
+					  Oid sortOperator, Oid sortCollation,
 					  bool nullsFirstFlag,
 					  int workMem, bool randomAccess)
 {
-	Tuplesortstate *state = tuplesort_begin_common(workMem, randomAccess);
-	MemoryContext oldcontext;
-	int16		typlen;
-	bool		typbyval;
-
-	oldcontext = MemoryContextSwitchTo(state->sortcontext);
-
-#ifdef TRACE_SORT
-	if (trace_sort)
-		elog(LOG,
-			 "begin datum sort: workMem = %d, randomAccess = %c",
-			 workMem, randomAccess ? 't' : 'f');
-#endif
-
-	state->nKeys = 1;			/* always a one-column sort */
-
-	TRACE_POSTGRESQL_SORT_START(DATUM_SORT,
-								false,	/* no unique check */
-								1,
-								workMem,
-								randomAccess);
-
-	state->comparetup = comparetup_datum;
-	state->copytup = copytup_datum;
-	state->writetup = writetup_datum;
-	state->readtup = readtup_datum;
-	state->reversedirection = reversedirection_datum;
-
-	state->datumType = datumType;
-
-	/* Prepare SortSupport data */
-	state->onlyKey = (SortSupport) palloc0(sizeof(SortSupportData));
-
-	state->onlyKey->ssup_cxt = CurrentMemoryContext;
-	state->onlyKey->ssup_collation = sortCollation;
-	state->onlyKey->ssup_nulls_first = nullsFirstFlag;
-
-	PrepareSortSupportFromOrderingOp(sortOperator, state->onlyKey);
-
-	/* lookup necessary attributes of the datum type */
-	get_typlenbyval(datumType, &typlen, &typbyval);
-	state->datumTypeLen = typlen;
-	state->datumTypeByVal = typbyval;
-
-	MemoryContextSwitchTo(oldcontext);
-
-	return state;
+	return NULL;
 }
 
-
-/*
- * All tuples have been provided; finish the sort.
- */
-void
-tuplesort_performsort(Tuplesortstate *state)
+void tuplesort_set_bound(Tuplesortstate *state, int64 bound)
 {
-	MemoryContext oldcontext = MemoryContextSwitchTo(state->sortcontext);
-
-#ifdef TRACE_SORT
-	if (trace_sort)
-		elog(LOG, "performsort starting: %s",
-			 pg_rusage_show(&state->ru_start));
-#endif
-
-	switch (state->status)
-	{
-		case TSS_INITIAL:
-
-			/*
-			 * We were able to accumulate all the tuples within the allowed
-			 * amount of memory.  Just qsort 'em and we're done.
-			 */
-			if (state->memtupcount > 1)
-			{
-				/* Can we use the single-key sort function? */
-				if (state->onlyKey != NULL)
-					qsort_ssup(state->memtuples, state->memtupcount,
-							   state->onlyKey);
-				else
-					qsort_tuple(state->memtuples,
-								state->memtupcount,
-								state->comparetup,
-								state);
-			}
-			state->current = 0;
-			state->eof_reached = false;
-			state->markpos_offset = 0;
-			state->markpos_eof = false;
-			state->status = TSS_SORTEDINMEM;
-			break;
-
-		case TSS_BOUNDED:
-
-			/*
-			 * We were able to accumulate all the tuples required for output
-			 * in memory, using a heap to eliminate excess tuples.  Now we
-			 * have to transform the heap to a properly-sorted array.
-			 */
-			sort_bounded_heap(state);
-			state->current = 0;
-			state->eof_reached = false;
-			state->markpos_offset = 0;
-			state->markpos_eof = false;
-			state->status = TSS_SORTEDINMEM;
-			break;
-
-		case TSS_BUILDRUNS:
-
-			/*
-			 * Finish tape-based sort.  First, flush all tuples remaining in
-			 * memory out to tape; then merge until we have a single remaining
-			 * run (or, if !randomAccess, one run per tape). Note that
-			 * mergeruns sets the correct state->status.
-			 */
-			dumptuples(state, true);
-			mergeruns(state);
-			state->eof_reached = false;
-			state->markpos_block = 0L;
-			state->markpos_offset = 0;
-			state->markpos_eof = false;
-			break;
-
-		default:
-			elog(ERROR, "invalid tuplesort state");
-			break;
-	}
-
-#ifdef TRACE_SORT
-	if (trace_sort)
-	{
-		if (state->status == TSS_FINALMERGE)
-			elog(LOG, "performsort done (except %d-way final merge): %s",
-				 state->activeTapes,
-				 pg_rusage_show(&state->ru_start));
-		else
-			elog(LOG, "performsort done: %s",
-				 pg_rusage_show(&state->ru_start));
-	}
-#endif
-
-	MemoryContextSwitchTo(oldcontext);
+	
 }
 
-
-/*
- * Accept one Datum while collecting input data for sort.
- *
- * If the Datum is pass-by-ref type, the value will be copied.
- */
-void
-tuplesort_putdatum(Tuplesortstate *state, Datum val, bool isNull)
+void tuplesort_puttupleslot(Tuplesortstate *state,
+					   TupleTableSlot *slot)
 {
-	MemoryContext oldcontext = MemoryContextSwitchTo(state->sortcontext);
-	SortTuple	stup;
 
-	/*
-	 * If it's a pass-by-reference value, copy it into memory we control, and
-	 * decrease availMem.  Then call the common code.
-	 */
-	if (isNull || state->datumTypeByVal)
-	{
-		stup.datum1 = val;
-		stup.isnull1 = isNull;
-		stup.tuple = NULL;		/* no separate storage */
-	}
-	else
-	{
-		stup.datum1 = datumCopy(val, false, state->datumTypeLen);
-		stup.isnull1 = false;
-		stup.tuple = DatumGetPointer(stup.datum1);
-		USEMEM(state, GetMemoryChunkSpace(stup.tuple));
-	}
-
-	puttuple_common(state, &stup);
-
-	MemoryContextSwitchTo(oldcontext);
 }
 
-/*
- * Fetch the next Datum in either forward or back direction.
- * Returns FALSE if no more datums.
- *
- * If the Datum is pass-by-ref type, the returned value is freshly palloc'd
- * and is now owned by the caller.
- */
-bool
-tuplesort_getdatum(Tuplesortstate *state, bool forward,
+void tuplesort_putheaptuple(Tuplesortstate *state, HeapTuple tup)
+{
+
+}
+
+void tuplesort_putindextuple(Tuplesortstate *state, IndexTuple tuple)
+{
+
+}
+
+void tuplesort_putdatum(Tuplesortstate *state, Datum val,
+				   bool isNull)
+{
+	
+}
+
+void tuplesort_performsort(Tuplesortstate *state)
+{
+	
+}
+
+bool tuplesort_gettupleslot(Tuplesortstate *state, bool forward,
+					   TupleTableSlot *slot)
+{
+	return false;
+}
+
+HeapTuple tuplesort_getheaptuple(Tuplesortstate *state, bool forward,
+					   bool *should_free)
+{
+	return NULL;
+}
+
+IndexTuple tuplesort_getindextuple(Tuplesortstate *state, bool forward,
+						bool *should_free)
+{
+	return NULL;
+}
+
+bool tuplesort_getdatum(Tuplesortstate *state, bool forward,
 				   Datum *val, bool *isNull)
 {
-	MemoryContext oldcontext = MemoryContextSwitchTo(state->sortcontext);
-	SortTuple	stup;
-	bool		should_free;
-
-	if (!tuplesort_gettuple_common(state, forward, &stup, &should_free))
-	{
-		MemoryContextSwitchTo(oldcontext);
-		return false;
-	}
-
-	if (stup.isnull1 || state->datumTypeByVal)
-	{
-		*val = stup.datum1;
-		*isNull = stup.isnull1;
-	}
-	else
-	{
-		if (should_free)
-			*val = stup.datum1;
-		else
-			*val = datumCopy(stup.datum1, false, state->datumTypeLen);
-		*isNull = false;
-	}
-
-	MemoryContextSwitchTo(oldcontext);
-
-	return true;
+	return false;
 }
 
+void tuplesort_end(Tuplesortstate *state)
+{
+	
+}
+
+void tuplesort_get_stats(Tuplesortstate *state,
+					const char **sortMethod,
+					const char **spaceType,
+					long *spaceUsed)
+{
+
+}
+
+int	tuplesort_merge_order(long allowedMem) 
+{
+	return 0;
+}
 
 /*
- * Fetch the next Datum in either forward or back direction.
- * Returns FALSE if no more datums.
- *
- * If the Datum is pass-by-ref type, the returned value is freshly palloc'd
- * and is now owned by the caller.
+ * These routines may only be called if randomAccess was specified 'true'.
+ * Likewise, backwards scan in gettuple/getdatum is only allowed if
+ * randomAccess was specified.
  */
-bool
-tuplesort_getdatum(Tuplesortstate *state, bool forward,
-				   Datum *val, bool *isNull)
+void tuplesort_rescan(Tuplesortstate *state)
 {
-	MemoryContext oldcontext = MemoryContextSwitchTo(state->sortcontext);
-	SortTuple	stup;
-	bool		should_free;
+	
+}
+void tuplesort_markpos(Tuplesortstate *state)
+{
+	
+}
+void tuplesort_restorepos(Tuplesortstate *state)
+{
 
-	if (!tuplesort_gettuple_common(state, forward, &stup, &should_free))
-	{
-		MemoryContextSwitchTo(oldcontext);
-		return false;
-	}
-
-	if (stup.isnull1 || state->datumTypeByVal)
-	{
-		*val = stup.datum1;
-		*isNull = stup.isnull1;
-	}
-	else
-	{
-		if (should_free)
-			*val = stup.datum1;
-		else
-			*val = datumCopy(stup.datum1, false, state->datumTypeLen);
-		*isNull = false;
-	}
-
-	MemoryContextSwitchTo(oldcontext);
-
-	return true;
 }

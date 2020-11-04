@@ -1657,6 +1657,8 @@ typedef struct SortState
 	bool		shuffle_sort_Done;		/* sort completed yet? */
 	bool		buffer_empty;
 	bool		eof_reach;
+
+	int 		rescan_count;
 } SortState;
 
 /* ---------------------

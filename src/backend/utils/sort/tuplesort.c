@@ -484,8 +484,9 @@ void
 clear_tupleshufflesort_state(Tuplesortstate* tuplesortstate)
 {
 	tuplesortstate->memtupcount = 0;
+	FREEMEM(tuplesortstate, GetMemoryChunkSpace(tuplesortstate->memtuples));
 	pfree(tuplesortstate->memtuples);
-	// free(tuplesortstate);
+	// pfree(tuplesortstate);
 }
 
 /*
@@ -957,7 +958,9 @@ tupleshufflesort_gettuple_common(Tuplesortstate *state, SortTuple *stup)
 	// unsigned int tuplen;
 	if (state->current < state->memtupcount)
 		*stup = state->memtuples[state->current++];
-	// if there is not any tuple left in the buffer
+
+
+	// if there is not any tuple left in the buffer, clear the buffer indexes
 	if (state->current == state->memtupcount) {
 		tuple_left = false;
 		state->current = 0;

@@ -3,6 +3,8 @@
         "__split_buffer": "c",
         "array": "c",
         "string_view": "c",
-        "unordered_map": "c"
+        "unordered_map": "c",
+        "locale": "c",
+        "string": "c"
     }
 }

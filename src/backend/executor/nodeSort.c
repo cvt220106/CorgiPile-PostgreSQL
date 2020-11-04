@@ -105,7 +105,11 @@ ExecSort(SortState *node)
 	}
 
 	if (node->buffer_empty) {
+		if (node->eof_reach)
+			return NULL;
+
 		bool buffer_full = false;
+		outerNode = outerPlanState(node);
 
 		while(true) {
       		// fetch a tuple from the ShuffleScanNode 
@@ -136,9 +140,11 @@ ExecSort(SortState *node)
 
 	// buffer_full or TupIsNull
 	bool tuple_left = tupleshufflesort_gettupleslot(state, slot);
-	if (tuple_left == 0) {
+	if (tuple_left == false) {
 		node->buffer_empty = true;
 		// clear_buffer(); set current_count = 0
+		// if (node->eof_reach)
+		// 	slot = NULL;
 	}
 
 	return slot;
@@ -242,7 +248,7 @@ ExecEndSort(SortState *node)
 	 */
 	if (node->tuplesortstate != NULL)
 		tupleshufflesort_end((Tuplesortstate *) node->tuplesortstate);
-	pfree(node->tuplesortstate);
+	// pfree(node->tuplesortstate);
 
 	/*
 	 * shut down the subplan

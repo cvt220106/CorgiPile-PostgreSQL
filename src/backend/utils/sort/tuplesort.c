@@ -659,6 +659,7 @@ tupleshufflesort_begin_common(int workMem)
 	// state->tapeset = NULL;
 
 	state->memtupcount = 0;
+	state->current = 0;
 
 	/*
 	 * Initial size of array must be more than ALLOCSET_SEPARATE_THRESHOLD;
@@ -959,6 +960,8 @@ tupleshufflesort_gettuple_common(Tuplesortstate *state, SortTuple *stup)
 	// if there is not any tuple left in the buffer
 	if (state->current == state->memtupcount) {
 		tuple_left = false;
+		state->current = 0;
+		state->memtupcount = 0;
 	}
 	return tuple_left;
 }

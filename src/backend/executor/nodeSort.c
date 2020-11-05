@@ -61,20 +61,10 @@ void init_Tuplesortstate(SortState *node) {
 TupleTableSlot *
 ExecSort(SortState *node)
 {
-	// case 1: buffer_empty, going to put tuples into it.
-	// case 2: buffer is filled with tuples.
-	// case 3: buffer is half-filled with tuples. The last tuple cannot fill the buffer.
-	// case 4: buffer_empty, last tuple
 	EState	   *estate = node->ss.ps.state;
 	ScanDirection dir = estate->es_direction; // going to be set to ShuffleScanDirection
 	Tuplesortstate *state = (Tuplesortstate *) node->tuplesortstate;
 	TupleTableSlot *slot;
-
-	/*
-	 * get state info from node
-	 */
-	// SO1_printf("ExecSort: %s\n",
-	// 		   "entering routine");
 
 	/*
 	 * If first time through, read all tuples from outer plan and pass them to
@@ -86,15 +76,28 @@ ExecSort(SortState *node)
 		node->shuffle_sort_Done = false;
 		node->buffer_empty = true;
 		node->eof_reach = false;
-		node->rescan_count = 2;
+		node->rescan_count = 0;
 
 		state = (Tuplesortstate *) node->tuplesortstate;
 	}
 
 
 	if (node->buffer_empty) {
-		if (node->eof_reach)
-			return NULL;
+		if (node->eof_reach) {
+			if (node->rescan_count++ < 1) {
+				ExecReScanSort(node);
+				init_Tuplesortstate(node);
+
+				node->shuffle_sort_Done = false;
+				node->buffer_empty = true;
+				node->eof_reach = false;
+
+				state = (Tuplesortstate *) node->tuplesortstate;
+			}
+			else
+				return NULL;
+		}
+			
 
 		bool buffer_full = false;
 		PlanState  *outerNode = outerPlanState(node);
@@ -135,6 +138,85 @@ ExecSort(SortState *node)
 
 	return slot;
 }
+
+// can compile
+// TupleTableSlot *
+// ExecSort(SortState *node)
+// {
+// 	// case 1: buffer_empty, going to put tuples into it.
+// 	// case 2: buffer is filled with tuples.
+// 	// case 3: buffer is half-filled with tuples. The last tuple cannot fill the buffer.
+// 	// case 4: buffer_empty, last tuple
+// 	EState	   *estate = node->ss.ps.state;
+// 	ScanDirection dir = estate->es_direction; // going to be set to ShuffleScanDirection
+// 	Tuplesortstate *state = (Tuplesortstate *) node->tuplesortstate;
+// 	TupleTableSlot *slot;
+
+// 	/*
+// 	 * get state info from node
+// 	 */
+// 	// SO1_printf("ExecSort: %s\n",
+// 	// 		   "entering routine");
+
+// 	/*
+// 	 * If first time through, read all tuples from outer plan and pass them to
+// 	 * tuplesort.c. Subsequent calls just fetch tuples from tuplesort.
+// 	 */
+// 	if (state == NULL) {
+// 		init_Tuplesortstate(node);
+
+// 		node->shuffle_sort_Done = false;
+// 		node->buffer_empty = true;
+// 		node->eof_reach = false;
+// 		node->rescan_count = 2;
+
+// 		state = (Tuplesortstate *) node->tuplesortstate;
+// 	}
+
+
+// 	if (node->buffer_empty) {
+// 		if (node->eof_reach) 
+// 			return NULL;
+
+// 		bool buffer_full = false;
+// 		PlanState  *outerNode = outerPlanState(node);
+
+// 		while(true) {
+//       		// fetch a tuple from the ShuffleScanNode 
+//       		slot = ExecProcNode(outerNode);
+//       		// put_tuple_into_buffer(tuple, buffer);
+
+// 			if (!TupIsNull(slot)) { // a non-empty slot, put it into the buffer
+// 				buffer_full = tupleshufflesort_puttupleslot(state, slot);
+// 			} 
+// 			else {
+// 				node->eof_reach = true;
+// 				// buffer = [     ], tuple = null (eof_reach)
+// 				if (is_shuffle_buffer_emtpy(state)) {
+// 					return NULL; // return slot = null;
+// 				}
+// 			}
+			
+// 			if (buffer_full || node->eof_reach) {
+// 				tupleshufflesort_performshuffle(state);
+// 				node->buffer_empty = false;
+// 				break;
+// 			}	
+//    		}
+// 	}
+	
+// 	slot = node->ss.ps.ps_ResultTupleSlot;
+
+// 	// buffer_full or buffer_is_halfly_filled in the end
+// 	bool tuple_left = tupleshufflesort_gettupleslot(state, slot);
+
+// 	// all the tuples are extracted from buffer
+// 	if (tuple_left == false) {
+// 		node->buffer_empty = true;
+// 	}
+
+// 	return slot;
+// }
 
 // TupleTableSlot *
 // ExecSort(SortState *node)

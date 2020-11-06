@@ -84,7 +84,7 @@ ExecSort(SortState *node)
 
 	if (node->buffer_empty) {
 		if (node->eof_reach) {
-			if (node->rescan_count++ < 1) {
+			if (node->rescan_count++ < 2) {
 				ExecReScanSort(node);
 				init_Tuplesortstate(node);
 

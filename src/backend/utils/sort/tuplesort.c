@@ -666,8 +666,9 @@ tupleshufflesort_begin_common(int workMem)
 	 * Initial size of array must be more than ALLOCSET_SEPARATE_THRESHOLD;
 	 * see comments in grow_memtuples().
 	 */
-	state->memtupsize = Max(1024,
-						ALLOCSET_SEPARATE_THRESHOLD / sizeof(SortTuple) + 1);
+	// state->memtupsize = Max(1024,
+	// 					ALLOCSET_SEPARATE_THRESHOLD / sizeof(SortTuple) + 1);
+	state->memtupcount = 4096;
 
 	state->memtuples = (SortTuple *) palloc(state->memtupsize * sizeof(SortTuple));
 

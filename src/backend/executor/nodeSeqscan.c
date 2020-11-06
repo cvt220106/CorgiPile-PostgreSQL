@@ -57,6 +57,13 @@ SeqNext(SeqScanState *node)
 	 */
 	scandesc = node->ss_currentScanDesc;
 	estate = node->ps.state;
+
+	
+    // Lijie: add begin
+    estate->es_direction = ShuffleScanDirection;
+    // Lijie: add end
+
+
 	direction = estate->es_direction;
 	slot = node->ss_ScanTupleSlot;
 
@@ -107,12 +114,31 @@ SeqRecheck(SeqScanState *node, TupleTableSlot *slot)
  *		access method functions.
  * ----------------------------------------------------------------
  */
+/*
 TupleTableSlot *
 ExecSeqScan(SeqScanState *node)
 {
 	return ExecScan((ScanState *) node,
 					(ExecScanAccessMtd) SeqNext,
 					(ExecScanRecheckMtd) SeqRecheck);
+}
+*/
+
+TupleTableSlot *
+ExecSeqScan(SeqScanState *node)
+{
+	TupleTableSlot *slot = ExecScan((ScanState *) node,
+					(ExecScanAccessMtd) SeqNext,
+					(ExecScanRecheckMtd) SeqRecheck);
+
+	// if (TupIsNull(slot) && node->rescan_count < 2) {
+	// 	ExecReScanSeqScan(node);
+	// 	slot = ExecScan((ScanState *) node,
+	// 				(ExecScanAccessMtd) SeqNext,
+	// 				(ExecScanRecheckMtd) SeqRecheck);
+	// 	node->rescan_count += 1;
+	// }
+	return slot;
 }
 
 /* ----------------------------------------------------------------
@@ -170,6 +196,9 @@ ExecInitSeqScan(SeqScan *node, EState *estate, int eflags)
 	scanstate->ps.plan = (Plan *) node;
 	scanstate->ps.state = estate;
 
+	// added by Lijie
+	// scanstate->rescan_count = 0;
+	// added end
 	/*
 	 * Miscellaneous initialization
 	 *

@@ -84,19 +84,19 @@ ExecSort(SortState *node)
 
 	if (node->buffer_empty) {
 		if (node->eof_reach) {
-			// if (node->rescan_count++ < 2) {
-			// 	ExecReScanSort(node);
-			// 	init_Tuplesortstate(node);
+			if (node->rescan_count++ < 1) {
+				ExecReScanSort(node);
+				init_Tuplesortstate(node);
 
-			// 	node->shuffle_sort_Done = false;
-			// 	node->buffer_empty = true;
-			// 	node->eof_reach = false;
+				node->shuffle_sort_Done = false;
+				node->buffer_empty = true;
+				node->eof_reach = false;
 
-			// 	state = (Tuplesortstate *) node->tuplesortstate;
-			// }
-			// else
-			// 	return NULL;
-			return NULL;
+				state = (Tuplesortstate *) node->tuplesortstate;
+			}
+			else
+				return NULL;
+			//return NULL;
 		}
 			
 
@@ -491,7 +491,8 @@ ExecReScanSort(SortState *node)
 	 *
 	 * Otherwise we can just rewind and rescan the sorted output.
 	 */
-	if (node->ss.ps.lefttree->chgParam != NULL)
+	//if (node->ss.ps.lefttree->chgParam != NULL)
+	if (node->ss.ps.lefttree != NULL)
 	{
 		node->shuffle_sort_Done = false;
 		tupleshufflesort_end((Tuplesortstate *) node->tuplesortstate);
@@ -501,8 +502,8 @@ ExecReScanSort(SortState *node)
 		 * if chgParam of subnode is not null then plan will be re-scanned by
 		 * first ExecProcNode.
 		 */
-		if (node->ss.ps.lefttree->chgParam == NULL)
-			ExecReScan(node->ss.ps.lefttree);
+		//if (node->ss.ps.lefttree->chgParam == NULL)
+		ExecReScan(node->ss.ps.lefttree);
 	}
 	else
 		tupleshufflesort_rescan((Tuplesortstate *) node->tuplesortstate);

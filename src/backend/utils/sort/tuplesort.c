@@ -668,7 +668,7 @@ tupleshufflesort_begin_common(int workMem)
 	 */
 	// state->memtupsize = Max(1024,
 	// 					ALLOCSET_SEPARATE_THRESHOLD / sizeof(SortTuple) + 1);
-	state->memtupcount = 4096;
+	state->memtupsize = 4096;
 
 	state->memtuples = (SortTuple *) palloc(state->memtupsize * sizeof(SortTuple));
 

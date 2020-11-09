@@ -23,6 +23,8 @@
 #include "utils/sortsupport.h"
 #include "utils/tuplestore.h"
 
+#include "utils/sgdmodel.h"
+
 
 /* ----------------
  *	  IndexInfo information
@@ -1658,7 +1660,7 @@ typedef struct SortState
 	bool		buffer_empty;
 	bool		eof_reach;
 
-	int 		rescan_count;
+	// int 		rescan_count;
 } SortState;
 
 /* ---------------------
@@ -1881,6 +1883,10 @@ typedef struct LimitState
 	LimitStateCond lstate;		/* state machine status, as above */
 	int64		position;		/* 1-based index of last tuple returned */
 	TupleTableSlot *subSlot;	/* tuple last obtained from subplan */
+
+	// for sgd operator
+	Model	*model;
+	bool  sgd_done;		/* SGD completed yet? */
 } LimitState;
 
 #endif   /* EXECNODES_H */

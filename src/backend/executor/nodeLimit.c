@@ -21,14 +21,280 @@
 
 #include "postgres.h"
 
+#include "executor/execdebug.h"
 #include "executor/executor.h"
 #include "executor/nodeLimit.h"
 #include "nodes/nodeFuncs.h"
 
-static void recompute_limits(LimitState *node);
-static void pass_down_bound(LimitState *node, PlanState *child_node);
+#include "utils/array.h"
+#include "time.h"
+#include "math.h"
+
+Model* init_model(int n_features) {
+    Model* model = (Model *) palloc0(sizeof(Model));
+
+	/* for dblife */
+	// select * from dblife order by did;
+	model->total_loss = 0;
+    model->batch_size = 500;
+    model->learning_rate = 0.8;
+    model->n_features = 41270;
+	model->tuple_num = 0;
+	model->iter_num = 50; // to change
+	
+
+	/* for forest 
+	// select * from forest order by did;
+	model->total_loss = 0;
+    model->batch_size = 1000;
+    model->learning_rate = 0.5;
+    model->n_features = 54;
+	model->tuple_num = 0;
+	model->iter_num = 50; // to change
+	*/
+    // use memorycontext later
+	model->w = (double *) palloc0(sizeof(double) * n_features);
+
+    for (int i = 0; i < n_features; i++) {
+        // model->gradient[i] = 0;
+        model->w[i] = 0;
+    }
+
+    return model;
+}
+
+void ExecClearModel(Model* model) {
+    // free(model->gradient);
+	pfree(model->w);
+    pfree(model);
+}
+
+SGDBatchState* init_SGDBatchState(int n_features) {
+    SGDBatchState* batchstate = (SGDBatchState *) palloc0(sizeof(SGDBatchState));
+    batchstate->gradients = (double *) palloc0(sizeof(double) * n_features);
+	for (int i = 0; i < n_features; i++)
+		batchstate->gradients[i] = 0;
+    batchstate->loss = 0;
+	batchstate->tuple_num = 0;
+    return batchstate;
+}
+
+SGDTuple* init_SGDTuple(int n_features) {
+    SGDTuple* sgd_tuple = (SGDTuple *) palloc0(sizeof(SGDTuple));
+    sgd_tuple->features = (double *) palloc0(sizeof(double) * n_features);
+    return sgd_tuple;
+}
+
+SGDTupleDesc* init_SGDTupleDesc(int col_num, int n_features) {
+    SGDTupleDesc* sgd_tupledesc = (SGDTupleDesc *) palloc0(sizeof(SGDTupleDesc));
+
+    sgd_tupledesc->values = (Datum *) palloc0(sizeof(Datum) * col_num);
+	sgd_tupledesc->isnulls = (bool *) palloc0(sizeof(bool) * col_num);
+
+	// just for dblife: 
+	/*
+	CREATE TABLE dblife (
+	did serial,
+	k integer[],
+	v double precision[],
+	label integer);
+	*/
+	/* for dblife */
+	sgd_tupledesc->k_col = 1; 
+	sgd_tupledesc->v_col = 2;
+	sgd_tupledesc->label_col = 3;
+	sgd_tupledesc->n_features = n_features;
+	
+
+	/* for forest  
+	sgd_tupledesc->k_col = -1; // from 0
+	sgd_tupledesc->v_col = 1;
+	sgd_tupledesc->label_col = 2;
+	sgd_tupledesc->n_features = n_features;
+	*/
+
+    return sgd_tupledesc;
+}
+
+void clear_SGDBatchState(SGDBatchState* batchstate, int n_features) {
+	for (int i = 0; i < n_features; i++)
+		batchstate->gradients[i] = 0;
+    batchstate->loss = 0;
+	batchstate->tuple_num = 0;
+}
+
+void free_SGDBatchState(SGDBatchState* batchstate) {
+    pfree(batchstate->gradients);
+    pfree(batchstate);
+}
+
+void free_SGDTuple(SGDTuple* sgd_tuple) {
+    pfree(sgd_tuple->features);
+    pfree(sgd_tuple);
+}
+
+void free_SGDTupleDesc(SGDTupleDesc* sgd_tupledesc) {
+    pfree(sgd_tupledesc->values);
+    pfree(sgd_tupledesc->isnulls);
+	pfree(sgd_tupledesc);
+}
+
+static void
+compute_tuple_gradient_loss_LR(SGDTuple* tp, Model* model, SGDBatchState* batchstate)
+{
+    double y = tp->class_label;
+    double* x = tp->features;
+
+    int n = model->n_features;
+
+    // compute gradients of the incoming tuple
+    double wx = 0;
+    for (int i = 0; i < n; i++)
+        wx = wx + model->w[i] * x[i];
+    double ywx = y * wx;
+
+	double tuple_loss = log(1 + exp(-ywx));
+
+	double g_base = -y * (1 - 1 / (1 + exp(-ywx)));
+
+    // Add this tuple's gradient to the previous gradients in this batch
+    for (int i = 0; i < n; i++) 
+        batchstate->gradients[i] = batchstate->gradients[i] + g_base * x[i];
+
+    // compute the loss of the incoming tuple
+    batchstate->loss = batchstate->loss + tuple_loss;
+	batchstate->tuple_num += 1;
+}
 
 
+void
+compute_tuple_gradient_loss_SVM(SGDTuple* tp, Model* model, SGDBatchState* batchstate)
+{
+    double y = tp->class_label;
+    double* x = tp->features;
+
+    int n = model->n_features;
+
+    // double loss = 0;
+    // double grad[n];
+
+    // compute gradients of the incoming tuple
+    double wx = 0;
+    for (int i = 0; i < n; i++)
+        wx = wx + model->w[i] * x[i];
+    double ywx = y * wx;
+
+    if (1 - ywx > 0) {
+        for (int i = 0; i < n; i++)
+			batchstate->gradients[i] = batchstate->gradients[i] - y * x[i];
+    }
+
+    // compute the loss of the incoming tuple
+    double tuple_loss = 1 - ywx;
+    if (tuple_loss < 0)
+        tuple_loss = 0;
+	
+    batchstate->loss = batchstate->loss + tuple_loss;
+	batchstate->tuple_num += 1;
+}
+
+void update_model(Model* model, SGDBatchState* batchstate) {
+
+    // add graidents to the model and clear the batch gradients
+    for (int i = 0; i < model->n_features; i++) {
+        model->w[i] = model->w[i] - model->learning_rate * batchstate->gradients[i] / batchstate->tuple_num;
+		// model->w[i] = model->w[i] - model->learning_rate * 
+		// 			 (batchstate->gradients[i] / batchstate->tuple_num + 0.01 * model->w[i]);
+        batchstate->gradients[i] = 0;
+    }
+
+    model->total_loss = model->total_loss + batchstate->loss;
+    batchstate->loss = 0;
+	batchstate->tuple_num = 0;
+}
+
+
+void perform_SGD(Model *model, SGDTuple* sgd_tuple, SGDBatchState* batchstate, int i) {
+    if (sgd_tuple == NULL) /* slot == NULL means the end of the table. */
+        update_model(model, batchstate);
+    else {
+        // add the batch's gradients to the model, and reset the batch's gradients.
+        compute_tuple_gradient_loss_LR(sgd_tuple, model, batchstate);
+        if (i == model->batch_size - 1)
+            update_model(model, batchstate);
+        
+    }   
+}
+
+
+// Extract features and class label from Tuple
+void
+transfer_slot_to_sgd_tuple(
+	TupleTableSlot* slot, 
+	SGDTuple* sgd_tuple, 
+	SGDTupleDesc* sgd_tupledesc) {
+
+	// store the values of slot to values/isnulls arrays
+	/* slot => Datum values/isnulls */
+	heap_deform_tuple(slot->tts_tuple, slot->tts_tupleDescriptor, sgd_tupledesc->values, sgd_tupledesc->isnulls);
+	// DatumGetInt32
+	// tupleDesc->attrs[0]->atttypid
+
+	int k_col = sgd_tupledesc->k_col;
+	int v_col = sgd_tupledesc->v_col;
+	int label_col = sgd_tupledesc->label_col;
+
+	/* Datum => double/int */
+	// e.g., features = [0.1, 0, 0.2, 0, 0, 0.3, 0, 0], class_label = -1
+	// Tuple = {10, {0, 2, 5}, {0.1, 0.2, 0.3}, -1}
+	Datum v_dat = sgd_tupledesc->values[v_col]; // Datum{0.1, 0.2, 0.3}
+	Datum label_dat = sgd_tupledesc->values[label_col]; // Datum{-1}
+
+
+	/* feature datum arrary => double* v */
+	ArrayType  *v_array = DatumGetArrayTypeP(v_dat);
+	//Assert(ARR_ELEMTYPE(array) == FLOAT4OID);
+	int	v_num = ArrayGetNItems(ARR_NDIM(v_array), ARR_DIMS(v_array));
+	double *v = (double *) ARR_DATA_PTR(v_array);
+	// for (int i = 0; i < v_num; i++)
+	// 	elog(LOG, "%f, ", v[i]);
+
+
+	/* label dataum => int class_label */
+	int label = DatumGetInt32(label_dat);
+	sgd_tuple->class_label = label;
+
+
+	/* double* v => double* features */
+	double* features = sgd_tuple->features;
+	int n_features = sgd_tupledesc->n_features;
+	// if sparse dataset
+	if (k_col >= 0) {
+		/* k Datum array => int* k */
+		Datum k_dat = sgd_tupledesc->values[k_col]; // Datum{0, 2, 5}
+		ArrayType  *k_array = DatumGetArrayTypeP(k_dat);
+		int	k_num = ArrayGetNItems(ARR_NDIM(k_array), ARR_DIMS(k_array));
+		int *k = (int *) ARR_DATA_PTR(k_array);
+
+		// TODO: change to memset()
+		// for (int i = 0; i < n_features; i++) {
+		// 	features[i] = 0;
+		// }
+		memset(features, 0, sizeof(double) * n_features);
+
+		for (int i = 0; i < k_num; i++) {
+			int f_index = k[i]; // {0, 2, 5}, k[1] = 2
+			features[f_index] = v[i]; // {0.1, 0.2, 0.3}, features[2] = 0.2
+		}
+	}
+	else {
+		Assert(n_features == v_num);
+		for (int i = 0; i < v_num; i++) {
+			features[i] = v[i];
+		}
+	}
+	
+}
 /* ----------------------------------------------------------------
  *		ExecLimit
  *
@@ -39,328 +305,124 @@ static void pass_down_bound(LimitState *node, PlanState *child_node);
 TupleTableSlot *				/* return: a tuple or NULL */
 ExecLimit(LimitState *node)
 {
-	ScanDirection direction;
+	EState	   *estate;
 	TupleTableSlot *slot;
-	PlanState  *outerPlan;
+	Model* model = node->model;
 
 	/*
-	 * get information from the node
+	 * get state info from node
 	 */
-	direction = node->ps.state->es_direction;
-	outerPlan = outerPlanState(node);
+	SO1_printf("ExecSGD: %s\n", "entering routine");
+
+	estate = node->ps.state;
+	
+	// tupleSGDState = (TupleSGDState *) node->tupleSGDState;
 
 	/*
-	 * The main logic is a simple state machine.
+	 * If first time through, read all tuples from outer plan and pass them to
+	 * tuplesort.c. Subsequent calls just fetch tuples from tuplesort.
 	 */
-	switch (node->lstate)
-	{
-		case LIMIT_INITIAL:
+	SGDBatchState* batchstate = init_SGDBatchState(model->n_features);
+	SGDTuple* sgd_tuple = init_SGDTuple(model->n_features);
+	//Datum values[model->n_features + model-> slot->]
+	// ShuffleSort	   *plannode = (ShuffleSort *) node->ss.ps.plan;
+	PlanState  *outerNode;
+	TupleDesc	tupDesc;
 
-			/*
-			 * First call for this node, so compute limit/offset. (We can't do
-			 * this any earlier, because parameters from upper nodes will not
-			 * be set during ExecInitLimit.)  This also sets position = 0 and
-			 * changes the state to LIMIT_RESCAN.
-			 */
-			recompute_limits(node);
+	SO1_printf("ExecSGD: %s\n", "SGD iteration ");
 
-			/* FALL THRU */
+	estate->es_direction = ForwardScanDirection;
 
-		case LIMIT_RESCAN:
+	// outerNode = ShuffleSortNode
+	outerNode = outerPlanState(node);
+	// tupDesc is the TupleDesc of the previous node
+	tupDesc = ExecGetResultType(outerNode);
+	int col_num = tupDesc->natts;
+                                              
+	// node->tupleShuffleSortState = (void *) tupleShuffleSortState;
 
-			/*
-			 * If backwards scan, just return NULL without changing state.
-			 */
-			if (!ScanDirectionIsForward(direction))
-				return NULL;
+	int iter_num = model->iter_num;
+    int batch_size = node->model->batch_size;
 
-			/*
-			 * Check for empty window; if so, treat like empty subplan.
-			 */
-			if (node->count <= 0 && !node->noCount)
-			{
-				node->lstate = LIMIT_EMPTY;
-				return NULL;
-			}
+	SGDTupleDesc* sgd_tupledesc = init_SGDTupleDesc(col_num, model->n_features);
 
-			/*
-			 * Fetch rows from subplan until we reach position > offset.
-			 */
-			for (;;)
-			{
-				slot = ExecProcNode(outerPlan);
-				if (TupIsNull(slot))
-				{
-					/*
-					 * The subplan returns too few tuples for us to produce
-					 * any output at all.
-					 */
-					node->lstate = LIMIT_EMPTY;
-					return NULL;
+	// for counting data parsing time
+	clock_t parse_start, parse_finish;
+	double parse_time = 0;
+
+	// for counting the computation time
+	clock_t comp_start, comp_finish;
+	double comp_time = 0;
+
+	// iterations
+	for (int i = 1; i <= iter_num; i++) {
+		int ith_tuple = 0;
+		while(true) {
+			// get a tuple from ShuffleSortNode
+			slot = ExecProcNode(outerNode);
+
+			if (TupIsNull(slot)) {
+				if (i == iter_num) {
+					// elog(LOG, "[Iteartion %d] Finalize the model.", i);
+					perform_SGD(node->model, NULL, batchstate, ith_tuple);
+					elog(LOG, "[Finish iteartion %d] Loss = %f, parse_t = %fs, comp_t = %fs", 
+							i, model->total_loss, parse_time, comp_time);
+                	// can also free_SGDBatchState in ExecEndSGD
+                	free_SGDBatchState(batchstate);
+					free_SGDTuple(sgd_tuple);
+					free_SGDTupleDesc(sgd_tupledesc);
+					break;	
 				}
-				node->subSlot = slot;
-				if (++node->position > node->offset)
+				else {
+					// Current iteration ends, update model and print metrics
+					perform_SGD(node->model, NULL, batchstate, ith_tuple);
+					elog(LOG, "[Finish iteartion %d] Loss = %f, parse_t = %fs, comp_t = %fs", 
+							i, model->total_loss, parse_time, comp_time);
+					model->total_loss = 0;
+					parse_time = 0;
+					comp_time = 0;
+					clear_SGDBatchState(batchstate, model->n_features);
+					ExecReScan(outerNode);	
 					break;
+				}
 			}
 
-			/*
-			 * Okay, we have the first tuple of the window.
-			 */
-			node->lstate = LIMIT_INWINDOW;
-			break;
+			parse_start = clock();
+			transfer_slot_to_sgd_tuple(slot, sgd_tuple, sgd_tupledesc);
+			parse_finish = clock();
+			parse_time += (double)(parse_finish - parse_start) / CLOCKS_PER_SEC;    
 
-		case LIMIT_EMPTY:
+			comp_start = clock();
+			perform_SGD(node->model, sgd_tuple, batchstate, ith_tuple);
+			comp_finish = clock();
+			comp_time += (double)(comp_finish - comp_start) / CLOCKS_PER_SEC;
 
-			/*
-			 * The subplan is known to return no tuples (or not more than
-			 * OFFSET tuples, in general).  So we return no tuples.
-			 */
-			return NULL;
+            ith_tuple = (ith_tuple + 1) % batch_size;
 
-		case LIMIT_INWINDOW:
-			if (ScanDirectionIsForward(direction))
-			{
-				/*
-				 * Forwards scan, so check for stepping off end of window. If
-				 * we are at the end of the window, return NULL without
-				 * advancing the subplan or the position variable; but change
-				 * the state machine state to record having done so.
-				 */
-				if (!node->noCount &&
-					node->position - node->offset >= node->count)
-				{
-					node->lstate = LIMIT_WINDOWEND;
-					return NULL;
-				}
+			if (i == 1)
+				model->tuple_num = model->tuple_num + 1;
+		}
 
-				/*
-				 * Get next tuple from subplan, if any.
-				 */
-				slot = ExecProcNode(outerPlan);
-				if (TupIsNull(slot))
-				{
-					node->lstate = LIMIT_SUBPLANEOF;
-					return NULL;
-				}
-				node->subSlot = slot;
-				node->position++;
-			}
-			else
-			{
-				/*
-				 * Backwards scan, so check for stepping off start of window.
-				 * As above, change only state-machine status if so.
-				 */
-				if (node->position <= node->offset + 1)
-				{
-					node->lstate = LIMIT_WINDOWSTART;
-					return NULL;
-				}
-
-				/*
-				 * Get previous tuple from subplan; there should be one!
-				 */
-				slot = ExecProcNode(outerPlan);
-				if (TupIsNull(slot))
-					elog(ERROR, "LIMIT subplan failed to run backwards");
-				node->subSlot = slot;
-				node->position--;
-			}
-			break;
-
-		case LIMIT_SUBPLANEOF:
-			if (ScanDirectionIsForward(direction))
-				return NULL;
-
-			/*
-			 * Backing up from subplan EOF, so re-fetch previous tuple; there
-			 * should be one!  Note previous tuple must be in window.
-			 */
-			slot = ExecProcNode(outerPlan);
-			if (TupIsNull(slot))
-				elog(ERROR, "LIMIT subplan failed to run backwards");
-			node->subSlot = slot;
-			node->lstate = LIMIT_INWINDOW;
-			/* position does not change 'cause we didn't advance it before */
-			break;
-
-		case LIMIT_WINDOWEND:
-			if (ScanDirectionIsForward(direction))
-				return NULL;
-
-			/*
-			 * Backing up from window end: simply re-return the last tuple
-			 * fetched from the subplan.
-			 */
-			slot = node->subSlot;
-			node->lstate = LIMIT_INWINDOW;
-			/* position does not change 'cause we didn't advance it before */
-			break;
-
-		case LIMIT_WINDOWSTART:
-			if (!ScanDirectionIsForward(direction))
-				return NULL;
-
-			/*
-			 * Advancing after having backed off window start: simply
-			 * re-return the last tuple fetched from the subplan.
-			 */
-			slot = node->subSlot;
-			node->lstate = LIMIT_INWINDOW;
-			/* position does not change 'cause we didn't change it before */
-			break;
-
-		default:
-			elog(ERROR, "impossible LIMIT state: %d",
-				 (int) node->lstate);
-			slot = NULL;		/* keep compiler quiet */
-			break;
+		// decay the learning rate with 0.95^iter_num
+		model->learning_rate = model->learning_rate * 0.95;
+	
 	}
+		
+	node->sgd_done = true;
+	SO1_printf("ExecSGD: %s\n", "Performing SGD done");
 
-	/* Return the current tuple */
-	Assert(!TupIsNull(slot));
+	// Get the first or next tuple from tuplesort. Returns NULL if no more tuples.
+
+    // node->ps.ps_ResultTupleSlot; // = Model->w, => ExecStoreMinimalTuple();
+	// slot = node->ps.ps_ResultTupleSlot;
+	// elog(LOG, "[Model total loss %f]", model->total_loss);
+
+	// slot = output_model_record(node->ps.ps_ResultTupleSlot, model);
 
 	return slot;
 }
 
-/*
- * Evaluate the limit/offset expressions --- done at startup or rescan.
- *
- * This is also a handy place to reset the current-position state info.
- */
-static void
-recompute_limits(LimitState *node)
-{
-	ExprContext *econtext = node->ps.ps_ExprContext;
-	Datum		val;
-	bool		isNull;
 
-	if (node->limitOffset)
-	{
-		val = ExecEvalExprSwitchContext(node->limitOffset,
-										econtext,
-										&isNull,
-										NULL);
-		/* Interpret NULL offset as no offset */
-		if (isNull)
-			node->offset = 0;
-		else
-		{
-			node->offset = DatumGetInt64(val);
-			if (node->offset < 0)
-				ereport(ERROR,
-				 (errcode(ERRCODE_INVALID_ROW_COUNT_IN_RESULT_OFFSET_CLAUSE),
-				  errmsg("OFFSET must not be negative")));
-		}
-	}
-	else
-	{
-		/* No OFFSET supplied */
-		node->offset = 0;
-	}
-
-	if (node->limitCount)
-	{
-		val = ExecEvalExprSwitchContext(node->limitCount,
-										econtext,
-										&isNull,
-										NULL);
-		/* Interpret NULL count as no count (LIMIT ALL) */
-		if (isNull)
-		{
-			node->count = 0;
-			node->noCount = true;
-		}
-		else
-		{
-			node->count = DatumGetInt64(val);
-			if (node->count < 0)
-				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_ROW_COUNT_IN_LIMIT_CLAUSE),
-						 errmsg("LIMIT must not be negative")));
-			node->noCount = false;
-		}
-	}
-	else
-	{
-		/* No COUNT supplied */
-		node->count = 0;
-		node->noCount = true;
-	}
-
-	/* Reset position to start-of-scan */
-	node->position = 0;
-	node->subSlot = NULL;
-
-	/* Set state-machine state */
-	node->lstate = LIMIT_RESCAN;
-
-	/* Notify child node about limit, if useful */
-	pass_down_bound(node, outerPlanState(node));
-}
-
-/*
- * If we have a COUNT, and our input is a Sort node, notify it that it can
- * use bounded sort.  Also, if our input is a MergeAppend, we can apply the
- * same bound to any Sorts that are direct children of the MergeAppend,
- * since the MergeAppend surely need read no more than that many tuples from
- * any one input.  We also have to be prepared to look through a Result,
- * since the planner might stick one atop MergeAppend for projection purposes.
- *
- * This is a bit of a kluge, but we don't have any more-abstract way of
- * communicating between the two nodes; and it doesn't seem worth trying
- * to invent one without some more examples of special communication needs.
- *
- * Note: it is the responsibility of nodeSort.c to react properly to
- * changes of these parameters.  If we ever do redesign this, it'd be a
- * good idea to integrate this signaling with the parameter-change mechanism.
- */
-static void
-pass_down_bound(LimitState *node, PlanState *child_node)
-{
-	if (IsA(child_node, SortState))
-	{
-		SortState  *sortState = (SortState *) child_node;
-		int64		tuples_needed = node->count + node->offset;
-
-		/* negative test checks for overflow in sum */
-		if (node->noCount || tuples_needed < 0)
-		{
-			/* make sure flag gets reset if needed upon rescan */
-			sortState->bounded = false;
-		}
-		else
-		{
-			sortState->bounded = true;
-			sortState->bound = tuples_needed;
-		}
-	}
-	else if (IsA(child_node, MergeAppendState))
-	{
-		MergeAppendState *maState = (MergeAppendState *) child_node;
-		int			i;
-
-		for (i = 0; i < maState->ms_nplans; i++)
-			pass_down_bound(node, maState->mergeplans[i]);
-	}
-	else if (IsA(child_node, ResultState))
-	{
-		/*
-		 * An extra consideration here is that if the Result is projecting a
-		 * targetlist that contains any SRFs, we can't assume that every input
-		 * tuple generates an output tuple, so a Sort underneath might need to
-		 * return more than N tuples to satisfy LIMIT N. So we cannot use
-		 * bounded sort.
-		 *
-		 * If Result supported qual checking, we'd have to punt on seeing a
-		 * qual, too.  Note that having a resconstantqual is not a
-		 * showstopper: if that fails we're not getting any rows at all.
-		 */
-		if (outerPlanState(child_node) &&
-			!expression_returns_set((Node *) child_node->plan->targetlist))
-			pass_down_bound(node, outerPlanState(child_node));
-	}
-}
 
 /* ----------------------------------------------------------------
  *		ExecInitLimit
@@ -372,56 +434,59 @@ pass_down_bound(LimitState *node, PlanState *child_node)
 LimitState *
 ExecInitLimit(Limit *node, EState *estate, int eflags)
 {
-	LimitState *limitstate;
-	Plan	   *outerPlan;
+	LimitState  *sgdstate;
 
-	/* check for unsupported flags */
-	Assert(!(eflags & EXEC_FLAG_MARK));
+	SO1_printf("ExecInitSGD: %s\n",
+			   "initializing SGD node");
 
 	/*
 	 * create state structure
 	 */
-	limitstate = makeNode(LimitState);
-	limitstate->ps.plan = (Plan *) node;
-	limitstate->ps.state = estate;
+	sgdstate = makeNode(LimitState);
+	sgdstate->ps.plan = (Plan *) node;
+	sgdstate->ps.state = estate;
+    sgdstate->sgd_done = false;
 
-	limitstate->lstate = LIMIT_INITIAL;
+	// for forest
+    // int n_features = 54;
+    
+	// for dblife
+	int n_features = 41270; 
+
+    sgdstate->model = init_model(n_features);
+	
+	elog(LOG, "[SVM] Initialize SVM model");
+    // elog(LOG, "[SVM] loss = 0, p1 = 0, p2 = 0, gradient = 0, batch_size = 10, learning_rate = 0.1");
 
 	/*
-	 * Miscellaneous initialization
+	 * tuple table initialization
 	 *
-	 * Limit nodes never call ExecQual or ExecProject, but they need an
-	 * exprcontext anyway to evaluate the limit/offset parameters in.
+	 * sort nodes only return scan tuples from their sorted relation.
 	 */
-	ExecAssignExprContext(estate, &limitstate->ps);
+	ExecInitResultTupleSlot(estate, &sgdstate->ps);
 
 	/*
-	 * initialize child expressions
+	 * initialize child nodes
+	 *
+	 * We shield the child node from the need to support REWIND, BACKWARD, or
+	 * MARK/RESTORE.
 	 */
-	limitstate->limitOffset = ExecInitExpr((Expr *) node->limitOffset,
-										   (PlanState *) limitstate);
-	limitstate->limitCount = ExecInitExpr((Expr *) node->limitCount,
-										  (PlanState *) limitstate);
+	eflags &= ~(EXEC_FLAG_REWIND | EXEC_FLAG_BACKWARD | EXEC_FLAG_MARK);
+
+	outerPlanState(sgdstate) = ExecInitNode(outerPlan(node), estate, eflags);
 
 	/*
-	 * Tuple table initialization (XXX not actually used...)
+	 * initialize tuple type.  no need to initialize projection info because
+	 * this node doesn't do projections.
 	 */
-	ExecInitResultTupleSlot(estate, &limitstate->ps);
+	ExecAssignResultTypeFromTL(&sgdstate->ps);
+	// ExecAssignScanTypeFromOuterPlan(&sortstate->ss);
+	// sortstate->ss.ps.ps_ProjInfo = NULL;
 
-	/*
-	 * then initialize outer plan
-	 */
-	outerPlan = outerPlan(node);
-	outerPlanState(limitstate) = ExecInitNode(outerPlan, estate, eflags);
+	SO1_printf("ExecInitSGD: %s\n",
+			   "SGD node initialized");
 
-	/*
-	 * limit nodes do no projections, so initialize projection info for this
-	 * node appropriately
-	 */
-	ExecAssignResultTypeFromTL(&limitstate->ps);
-	limitstate->ps.ps_ProjInfo = NULL;
-
-	return limitstate;
+	return sgdstate;
 }
 
 /* ----------------------------------------------------------------
@@ -434,25 +499,39 @@ ExecInitLimit(Limit *node, EState *estate, int eflags)
 void
 ExecEndLimit(LimitState *node)
 {
+	/*
+	 * Free the exprcontext
+	 */
 	ExecFreeExprContext(&node->ps);
+
+	/*
+	 * clean out the tuple table
+	 */
+	ExecClearTuple(node->ps.ps_ResultTupleSlot);
+
+	ExecClearModel(node->model);
+
 	ExecEndNode(outerPlanState(node));
+
+	SO1_printf("ExecEndSGD: %s\n",
+			   "SGD node shutdown");
 }
 
 
 void
 ExecReScanLimit(LimitState *node)
 {
-	/*
-	 * Recompute limit/offset in case parameters changed, and reset the state
-	 * machine.  We must do this before rescanning our child node, in case
-	 * it's a Sort that we are passing the parameters down to.
-	 */
-	recompute_limits(node);
+	// /*
+	//  * Recompute limit/offset in case parameters changed, and reset the state
+	//  * machine.  We must do this before rescanning our child node, in case
+	//  * it's a Sort that we are passing the parameters down to.
+	//  */
+	// recompute_limits(node);
 
-	/*
-	 * if chgParam of subnode is not null then plan will be re-scanned by
-	 * first ExecProcNode.
-	 */
-	if (node->ps.lefttree->chgParam == NULL)
-		ExecReScan(node->ps.lefttree);
+	// /*
+	//  * if chgParam of subnode is not null then plan will be re-scanned by
+	//  * first ExecProcNode.
+	//  */
+	// if (node->ps.lefttree->chgParam == NULL)
+	// 	ExecReScan(node->ps.lefttree);
 }

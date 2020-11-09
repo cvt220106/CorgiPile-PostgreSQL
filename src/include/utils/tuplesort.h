@@ -103,6 +103,10 @@ extern Tuplesortstate *tuplesort_begin_datum(Oid datumType,
 					  Oid sortOperator, Oid sortCollation,
 					  bool nullsFirstFlag,
 					  int workMem, bool randomAccess);
+extern HeapTuple tupleshufflesort_getheaptuple(Tuplesortstate *state, 
+					bool forward, 
+					bool *should_free);
+
 
 extern void tuplesort_set_bound(Tuplesortstate *state, int64 bound);
 

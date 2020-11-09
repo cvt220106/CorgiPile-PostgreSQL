@@ -21,7 +21,7 @@
 #include "utils/tuplesort.h"
 
 
-void clear_buffer(Tuplesortstate* tuplesortstate)
+static void clear_buffer(Tuplesortstate* tuplesortstate)
 {
 	// We may do some other clearing jobs
 	// e.g., need to delete state->memtuples to avoid memory leak
@@ -30,7 +30,7 @@ void clear_buffer(Tuplesortstate* tuplesortstate)
 }
 
 
-void init_Tuplesortstate(SortState *node) {
+static void init_Tuplesortstate(SortState *node) {
 	// node denotes the SortState
 	Sort  *plannode = (Sort *) node->ss.ps.plan;
 	PlanState  *outerNode = outerPlanState(node);
@@ -76,7 +76,7 @@ ExecSort(SortState *node)
 		node->shuffle_sort_Done = false;
 		node->buffer_empty = true;
 		node->eof_reach = false;
-		node->rescan_count = 0;
+		// node->rescan_count = 0;
 
 		state = (Tuplesortstate *) node->tuplesortstate;
 	}
@@ -84,19 +84,19 @@ ExecSort(SortState *node)
 
 	if (node->buffer_empty) {
 		if (node->eof_reach) {
-			if (node->rescan_count++ < 1) {
-				ExecReScanSort(node);
-				init_Tuplesortstate(node);
+			// if (node->rescan_count++ < 1) {
+			// 	ExecReScanSort(node);
+			// 	init_Tuplesortstate(node);
 
-				node->shuffle_sort_Done = false;
-				node->buffer_empty = true;
-				node->eof_reach = false;
+			// 	node->shuffle_sort_Done = false;
+			// 	node->buffer_empty = true;
+			// 	node->eof_reach = false;
 
-				state = (Tuplesortstate *) node->tuplesortstate;
-			}
-			else
-				return NULL;
-			//return NULL;
+			// 	state = (Tuplesortstate *) node->tuplesortstate;
+			// }
+			// else
+			// 	return NULL;
+			return NULL;
 		}
 			
 

@@ -463,7 +463,7 @@ static void copytup_heap(Tuplesortstate *state, SortTuple *stup, void *tup);
 
 // Lijie: add begin
 // shuffle_tuple(state->memtuples, state->memtupcount, state);
-void
+static void
 shuffle_tuple(SortTuple *a, size_t n)
 {
 	srand(time(0) + rand());
@@ -535,7 +535,7 @@ is_shuffle_buffer_emtpy(Tuplesortstate *state) {
 	return state->memtupcount == 0;
 }
 
-bool
+static bool
 puttuple_into_buffer(Tuplesortstate *state, SortTuple *tuple) {
 	Assert(state->memtupcount < state->memtupsize);
 	state->memtuples[state->memtupcount++] = *tuple; // there is a copy
@@ -698,7 +698,7 @@ tupleshufflesort_begin_heap(TupleDesc tupDesc, int workMem)
 {
 	Tuplesortstate *state = tupleshufflesort_begin_common(workMem);
 	MemoryContext oldcontext;
-	int			i;
+	// int			i;
 
 	oldcontext = MemoryContextSwitchTo(state->shufflesortcontext);
 

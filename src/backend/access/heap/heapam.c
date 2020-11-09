@@ -76,7 +76,7 @@
 // added by Lijie
 // #define IOBigBlockSize 10 * 1024 * 1024 // 10MB
 // #define IOBigBlockSize 80 * 1024 // 10 pages
-#define IOBigBlockSize 40 * 1024 // 10 pages
+#define IOBigBlockSize 80 * 1024 // 10 pages
 // added end
 
 /* GUC variable */

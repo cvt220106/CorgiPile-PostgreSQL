@@ -21,7 +21,11 @@
 #include "utils/tuplesort.h"
 
 
-static void clear_buffer(Tuplesortstate* tuplesortstate)
+static void clear_buffer(Tuplesortstate* tuplesortstate);
+void init_Tuplesortstate(SortState *node);
+
+
+void clear_buffer(Tuplesortstate* tuplesortstate)
 {
 	// We may do some other clearing jobs
 	// e.g., need to delete state->memtuples to avoid memory leak
@@ -30,7 +34,7 @@ static void clear_buffer(Tuplesortstate* tuplesortstate)
 }
 
 
-static void init_Tuplesortstate(SortState *node) {
+void init_Tuplesortstate(SortState *node) {
 	// node denotes the SortState
 	Sort  *plannode = (Sort *) node->ss.ps.plan;
 	PlanState  *outerNode = outerPlanState(node);

@@ -116,6 +116,7 @@
 #include "utils/tuplesort.h"
 
 #include <time.h>
+#include "utils/sgdmodel.h"
 
 
 // /* sort-type codes for sort__start probes */
@@ -129,7 +130,7 @@
 bool		trace_sort = false;
 #endif
 
-
+int set_buffer_size = DEFAULT_BUFFER_SIZE; // 800 (KB)
 
 /*
  * The objects we actually sort are SortTuple structs.  These contain
@@ -437,7 +438,16 @@ struct Tuplesortstate
  * a lot better than what we were doing before 7.3.
  */
 
+
 static void copytup_heap(Tuplesortstate *state, SortTuple *stup, void *tup);
+// static void shuffle_tuple(SortTuple *a, size_t n);
+// static void clear_tupleshufflesort_state(Tuplesortstate* tuplesortstate);
+// bool is_shuffle_buffer_emtpy(Tuplesortstate *state);
+// bool puttuple_into_buffer(Tuplesortstate *state, SortTuple *tuple);
+// static Tuplesortstate * tupleshufflesort_begin_common(int workMem);
+// Tuplesortstate * tupleshufflesort_begin_heap(TupleDesc tupDesc, int workMem);
+
+
 /* When using this macro, beware of double evaluation of len */
 // #define LogicalTapeReadExact(tapeset, tapenum, ptr, len) \
 // 	do { \
@@ -668,7 +678,11 @@ tupleshufflesort_begin_common(int workMem)
 	 */
 	// state->memtupsize = Max(1024,
 	// 					ALLOCSET_SEPARATE_THRESHOLD / sizeof(SortTuple) + 1);
-	state->memtupsize = 4096;
+
+	Assert(state->availMem >= set_buffer_size * 1024L);
+	state->memtupsize = set_buffer_size * 1024L  / sizeof(SortTuple) + 1;
+	elog(LOG, "[buffer size] %d tuples, %d big blocks, %d pages", 
+			state->memtupsize, set_buffer_size / set_io_big_block_size, set_buffer_size / 8);
 
 	state->memtuples = (SortTuple *) palloc(state->memtupsize * sizeof(SortTuple));
 
@@ -1183,7 +1197,7 @@ tupleshufflesort_getheaptuple(Tuplesortstate *state, bool forward, bool *should_
 // }
 
 
-static void
+void
 copytup_heap(Tuplesortstate *state, SortTuple *stup, void *tup)
 {
 	/*

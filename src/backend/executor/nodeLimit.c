@@ -25,10 +25,37 @@
 #include "executor/executor.h"
 #include "executor/nodeLimit.h"
 #include "nodes/nodeFuncs.h"
+#include "utils/guc.h"
 
 #include "utils/array.h"
 #include "time.h"
 #include "math.h"
+
+
+// guc variables
+// can be set via "SET VAR = XX" in the psql console
+int set_batch_size = DEFAULT_BATCH_SIZE;
+int set_iter_num = DEFAULT_ITER_NUM;
+double set_learning_rate = DEFAULT_LEARNING_RATE;
+
+
+
+static Model* init_model(int n_features);
+static void ExecClearModel(Model* model);
+static SGDBatchState* init_SGDBatchState(int n_features);
+static SGDTuple* init_SGDTuple(int n_features);
+static SGDTupleDesc* init_SGDTupleDesc(int col_num, int n_features);
+static void clear_SGDBatchState(SGDBatchState* batchstate, int n_features);
+static void free_SGDBatchState(SGDBatchState* batchstate);
+static void free_SGDTuple(SGDTuple* sgd_tuple);
+static void free_SGDTupleDesc(SGDTupleDesc* sgd_tupledesc);
+static void compute_tuple_gradient_loss_LR(SGDTuple* tp, Model* model, SGDBatchState* batchstate);
+static void compute_tuple_gradient_loss_SVM(SGDTuple* tp, Model* model, SGDBatchState* batchstate);
+static void update_model(Model* model, SGDBatchState* batchstate);
+static void perform_SGD(Model *model, SGDTuple* sgd_tuple, SGDBatchState* batchstate, int i);
+static void transfer_slot_to_sgd_tuple(TupleTableSlot* slot, SGDTuple* sgd_tuple, SGDTupleDesc* sgd_tupledesc);
+
+
 
 Model* init_model(int n_features) {
     Model* model = (Model *) palloc0(sizeof(Model));
@@ -36,11 +63,11 @@ Model* init_model(int n_features) {
 	/* for dblife */
 	// select * from dblife order by did;
 	model->total_loss = 0;
-    model->batch_size = 500;
-    model->learning_rate = 0.8;
+    model->batch_size = set_batch_size;
+    model->learning_rate = set_learning_rate;
     model->n_features = 41270;
 	model->tuple_num = 0;
-	model->iter_num = 50; // to change
+	model->iter_num = set_iter_num; // to change
 	
 
 	/* for forest 
@@ -69,7 +96,7 @@ void ExecClearModel(Model* model) {
     pfree(model);
 }
 
-SGDBatchState* init_SGDBatchState(int n_features) {
+static SGDBatchState* init_SGDBatchState(int n_features) {
     SGDBatchState* batchstate = (SGDBatchState *) palloc0(sizeof(SGDBatchState));
     batchstate->gradients = (double *) palloc0(sizeof(double) * n_features);
 	for (int i = 0; i < n_features; i++)
@@ -79,13 +106,13 @@ SGDBatchState* init_SGDBatchState(int n_features) {
     return batchstate;
 }
 
-SGDTuple* init_SGDTuple(int n_features) {
+static SGDTuple* init_SGDTuple(int n_features) {
     SGDTuple* sgd_tuple = (SGDTuple *) palloc0(sizeof(SGDTuple));
     sgd_tuple->features = (double *) palloc0(sizeof(double) * n_features);
     return sgd_tuple;
 }
 
-SGDTupleDesc* init_SGDTupleDesc(int col_num, int n_features) {
+static SGDTupleDesc* init_SGDTupleDesc(int col_num, int n_features) {
     SGDTupleDesc* sgd_tupledesc = (SGDTupleDesc *) palloc0(sizeof(SGDTupleDesc));
 
     sgd_tupledesc->values = (Datum *) palloc0(sizeof(Datum) * col_num);
@@ -116,24 +143,24 @@ SGDTupleDesc* init_SGDTupleDesc(int col_num, int n_features) {
     return sgd_tupledesc;
 }
 
-void clear_SGDBatchState(SGDBatchState* batchstate, int n_features) {
+static void clear_SGDBatchState(SGDBatchState* batchstate, int n_features) {
 	for (int i = 0; i < n_features; i++)
 		batchstate->gradients[i] = 0;
     batchstate->loss = 0;
 	batchstate->tuple_num = 0;
 }
 
-void free_SGDBatchState(SGDBatchState* batchstate) {
+static void free_SGDBatchState(SGDBatchState* batchstate) {
     pfree(batchstate->gradients);
     pfree(batchstate);
 }
 
-void free_SGDTuple(SGDTuple* sgd_tuple) {
+static void free_SGDTuple(SGDTuple* sgd_tuple) {
     pfree(sgd_tuple->features);
     pfree(sgd_tuple);
 }
 
-void free_SGDTupleDesc(SGDTupleDesc* sgd_tupledesc) {
+static void free_SGDTupleDesc(SGDTupleDesc* sgd_tupledesc) {
     pfree(sgd_tupledesc->values);
     pfree(sgd_tupledesc->isnulls);
 	pfree(sgd_tupledesc);
@@ -167,7 +194,7 @@ compute_tuple_gradient_loss_LR(SGDTuple* tp, Model* model, SGDBatchState* batchs
 }
 
 
-void
+static void
 compute_tuple_gradient_loss_SVM(SGDTuple* tp, Model* model, SGDBatchState* batchstate)
 {
     double y = tp->class_label;
@@ -198,7 +225,7 @@ compute_tuple_gradient_loss_SVM(SGDTuple* tp, Model* model, SGDBatchState* batch
 	batchstate->tuple_num += 1;
 }
 
-void update_model(Model* model, SGDBatchState* batchstate) {
+static void update_model(Model* model, SGDBatchState* batchstate) {
 
     // add graidents to the model and clear the batch gradients
     for (int i = 0; i < model->n_features; i++) {
@@ -214,7 +241,7 @@ void update_model(Model* model, SGDBatchState* batchstate) {
 }
 
 
-void perform_SGD(Model *model, SGDTuple* sgd_tuple, SGDBatchState* batchstate, int i) {
+static void perform_SGD(Model *model, SGDTuple* sgd_tuple, SGDBatchState* batchstate, int i) {
     if (sgd_tuple == NULL) /* slot == NULL means the end of the table. */
         update_model(model, batchstate);
     else {
@@ -228,7 +255,7 @@ void perform_SGD(Model *model, SGDTuple* sgd_tuple, SGDBatchState* batchstate, i
 
 
 // Extract features and class label from Tuple
-void
+static void
 transfer_slot_to_sgd_tuple(
 	TupleTableSlot* slot, 
 	SGDTuple* sgd_tuple, 
@@ -438,6 +465,16 @@ ExecInitLimit(Limit *node, EState *estate, int eflags)
 
 	SO1_printf("ExecInitSGD: %s\n",
 			   "initializing SGD node");
+
+	//
+	const char* work_mem_str = GetConfigOption("work_mem", false, false);
+	elog(LOG, "[Param] work_mem = %s", work_mem_str);
+	elog(LOG, "[Param] io_block_size = %d", set_io_big_block_size);
+	elog(LOG, "[Param] buffer_size = %d", set_buffer_size);
+	elog(LOG, "[Param] batch_size = %d", set_batch_size);
+	elog(LOG, "[Param] iter_num = %d", set_iter_num);
+	elog(LOG, "[Param] learning_rate = %f", set_learning_rate);
+
 
 	/*
 	 * create state structure

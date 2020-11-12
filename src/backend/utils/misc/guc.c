@@ -76,6 +76,7 @@
 #include "utils/snapmgr.h"
 #include "utils/tzparser.h"
 #include "utils/xml.h"
+#include "utils/sgdmodel.h"
 
 #ifndef PG_KRB_SRVTAB
 #define PG_KRB_SRVTAB ""
@@ -1692,6 +1693,53 @@ static struct config_int ConfigureNamesInt[] =
 		NULL, NULL, NULL
 	},
 
+	// added by Lijie
+
+	{
+		{"io_big_block_size", PGC_USERSET, DB_ML,
+			gettext_noop("Sets the IOBigBlockSize for reading and shuffling pages, in kilobytes."),
+			gettext_noop("This default value is 81920 (10 pages = 10 * 8KB)."),
+			GUC_UNIT_KB
+		},
+		&set_io_big_block_size,
+		DEFAULT_IO_BIG_BLOCK_SIZE, 8, MAX_KILOBYTES,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"buffer_size", PGC_USERSET, DB_ML,
+			gettext_noop("Sets the buffer size for shuffling tuples, in kilobytes."),
+			gettext_noop("This default value is 819200 (100 pages)."),
+			GUC_UNIT_KB
+		},
+		&set_buffer_size,
+		DEFAULT_BUFFER_SIZE, 8, MAX_KILOBYTES,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"batch_size", PGC_USERSET, DB_ML,
+			gettext_noop("Sets the batch size for SGD."),
+			gettext_noop("This default value is 512."),
+			NULL
+		},
+		&set_batch_size,
+		DEFAULT_BATCH_SIZE, 1, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"iter_num", PGC_USERSET, DB_ML,
+			gettext_noop("Sets the iteration number for SGD."),
+			gettext_noop("This default value is 10."),
+			NULL
+		},
+		&set_iter_num,
+		DEFAULT_ITER_NUM, 1, INT_MAX,
+		NULL, NULL, NULL
+	},
+	// added end
+
 	{
 		{"maintenance_work_mem", PGC_USERSET, RESOURCES_MEM,
 			gettext_noop("Sets the maximum memory to be used for maintenance operations."),
@@ -2389,6 +2437,18 @@ static struct config_int ConfigureNamesInt[] =
 
 static struct config_real ConfigureNamesReal[] =
 {
+	// added by Lijie
+
+	{
+		{"learning_rate", PGC_USERSET, DB_ML,
+			gettext_noop("Sets the intial learning rate for model training (default 0.1)."),
+			NULL
+		},
+		&set_learning_rate,
+		DEFAULT_LEARNING_RATE, 0, DBL_MAX, // 	0.0, 0.0, 1.0,
+		NULL, NULL, NULL
+	},
+	// added end
 	{
 		{"seq_page_cost", PGC_USERSET, QUERY_TUNING_COST,
 			gettext_noop("Sets the planner's estimate of the cost of a "

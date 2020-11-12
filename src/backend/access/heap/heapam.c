@@ -72,15 +72,19 @@
 
 #include "pg_config.h"
 
+#include "utils/sgdmodel.h"
+
 
 // added by Lijie
 // #define IOBigBlockSize 10 * 1024 * 1024 // 10MB
 // #define IOBigBlockSize 80 * 1024 // 10 pages
-#define IOBigBlockSize 80 * 1024 // 10 pages
+// #define IOBigBlockSize 80 * 1024 // 10 pages
 // added end
 
 /* GUC variable */
 bool		synchronize_seqscans = true;
+
+int set_io_big_block_size = DEFAULT_IO_BIG_BLOCK_SIZE;
 
 
 static HeapScanDesc heap_beginscan_internal(Relation relation,
@@ -965,8 +969,8 @@ heapgettup_pagemode(HeapScanDesc scan,
 				return;
 			}
 
-			Size page_size = BLCKSZ; // default 8KB
-			scan->page_num_per_block = IOBigBlockSize / page_size; // 10MB / pageSize (8KB) = 1280 pages per io_block
+			Size page_size = BLCKSZ / 1024; // default 8KB
+			scan->page_num_per_block = set_io_big_block_size / page_size; // 10MB / pageSize (8KB) = 1280 pages per io_block
 		
 			BlockNumber table_page_num = scan->rs_nblocks; // e.g., 10000
 			

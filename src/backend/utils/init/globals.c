@@ -103,6 +103,7 @@ bool		allowSystemTableMods = false;
 int			work_mem = 1024;
 int			maintenance_work_mem = 16384;
 
+
 /*
  * Primary determinants of sizes of shared-memory structures.  MaxBackends is
  * MaxConnections + autovacuum_max_workers + 1 (it is computed by the GUC

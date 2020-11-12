@@ -96,7 +96,11 @@ enum config_group
 	ERROR_HANDLING_OPTIONS,
 	PRESET_OPTIONS,
 	CUSTOM_OPTIONS,
-	DEVELOPER_OPTIONS
+	DEVELOPER_OPTIONS,
+
+	// added by Lijie
+	DB_ML
+	// added end
 };
 
 /*

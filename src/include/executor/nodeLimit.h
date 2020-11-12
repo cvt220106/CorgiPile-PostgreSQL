@@ -54,19 +54,19 @@ typedef struct SGDTupleDesc
 } SGDTupleDesc;
 
 
-extern Model* init_model(int n_features);
-extern void ExecClearModel(Model* model);
-extern SGDBatchState* init_SGDBatchState(int n_features);
-extern SGDTuple* init_SGDTuple(int n_features);
-extern SGDTupleDesc* init_SGDTupleDesc(int col_num, int n_features);
-extern void clear_SGDBatchState(SGDBatchState* batchstate, int n_features);
-extern void free_SGDBatchState(SGDBatchState* batchstate);
-extern void free_SGDTuple(SGDTuple* sgd_tuple);
-extern void free_SGDTupleDesc(SGDTupleDesc* sgd_tupledesc);
-extern void compute_tuple_gradient_loss(SGDTuple* tp, Model* model, SGDBatchState* batchstate);
-extern void update_model(Model* model, SGDBatchState* batchstate);
-extern void perform_SGD(Model *model, SGDTuple* sgd_tuple, SGDBatchState* batchstate, int i);
-extern void transfer_slot_to_sgd_tuple(TupleTableSlot* slot, SGDTuple* sgd_tuple, SGDTupleDesc* sgd_tupledesc);
+// extern Model* init_model(int n_features);
+// extern void ExecClearModel(Model* model);
+// extern SGDBatchState* init_SGDBatchState(int n_features);
+// extern SGDTuple* init_SGDTuple(int n_features);
+// extern SGDTupleDesc* init_SGDTupleDesc(int col_num, int n_features);
+// extern void clear_SGDBatchState(SGDBatchState* batchstate, int n_features);
+// extern void free_SGDBatchState(SGDBatchState* batchstate);
+// extern void free_SGDTuple(SGDTuple* sgd_tuple);
+// extern void free_SGDTupleDesc(SGDTupleDesc* sgd_tupledesc);
+// extern void compute_tuple_gradient_loss(SGDTuple* tp, Model* model, SGDBatchState* batchstate);
+// extern void update_model(Model* model, SGDBatchState* batchstate);
+// extern void perform_SGD(Model *model, SGDTuple* sgd_tuple, SGDBatchState* batchstate, int i);
+// extern void transfer_slot_to_sgd_tuple(TupleTableSlot* slot, SGDTuple* sgd_tuple, SGDTupleDesc* sgd_tupledesc);
 
 
 

@@ -131,7 +131,8 @@ bool		trace_sort = false;
 #endif
 
 int set_buffer_size = DEFAULT_BUFFER_SIZE; // 800 (KB)
-
+int set_buffer_tuple_num = DEFAULT_BUFFER_TUPLE_NUM;
+double set_buffer_block_num = DEFAULT_BUFFER_BLOCK_NUM;
 /*
  * The objects we actually sort are SortTuple structs.  These contain
  * a pointer to the tuple proper (might be a MinimalTuple or IndexTuple),
@@ -679,10 +680,14 @@ tupleshufflesort_begin_common(int workMem)
 	// state->memtupsize = Max(1024,
 	// 					ALLOCSET_SEPARATE_THRESHOLD / sizeof(SortTuple) + 1);
 
+	/* if using set_buffer_size (KB)
 	Assert(state->availMem >= set_buffer_size * 1024L);
 	state->memtupsize = set_buffer_size * 1024L  / sizeof(SortTuple) + 1;
 	elog(LOG, "[buffer size] %d tuples, %d big blocks, %d pages", 
 			state->memtupsize, set_buffer_size / set_io_big_block_size, set_buffer_size / 8);
+	*/
+
+	state->memtupsize = set_buffer_tuple_num;
 
 	state->memtuples = (SortTuple *) palloc(state->memtupsize * sizeof(SortTuple));
 

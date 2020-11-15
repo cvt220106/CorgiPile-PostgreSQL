@@ -1209,6 +1209,10 @@ elog_start(const char *filename, int lineno, const char *funcname)
 	edata->funcname = funcname;
 	/* errno is saved now so that error parameter eval can't change it */
 	edata->saved_errno = errno;
+
+	// added by Lijie
+	edata->hide_stmt = true;
+	// added end
 }
 
 /*
@@ -2414,6 +2418,10 @@ send_message_to_server_log(ErrorData *edata)
 			}
 		}
 	}
+
+	// added by Lijie
+	edata->hide_stmt = true;
+	// added end
 
 	/*
 	 * If the user wants the query that generated this error logged, do it.

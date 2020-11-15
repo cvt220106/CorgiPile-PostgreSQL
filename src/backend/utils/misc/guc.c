@@ -1718,6 +1718,18 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
+		{"buffer_tuple_num", PGC_USERSET, DB_ML,
+			gettext_noop("Sets the number of tuples in a  buffer for shuffling."),
+			gettext_noop("This default value is 1000 (tuples)."),
+			NULL
+		},
+		&set_buffer_tuple_num,
+		DEFAULT_BUFFER_TUPLE_NUM, 1, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+
+	{
 		{"batch_size", PGC_USERSET, DB_ML,
 			gettext_noop("Sets the batch size for SGD."),
 			gettext_noop("This default value is 512."),
@@ -2446,6 +2458,15 @@ static struct config_real ConfigureNamesReal[] =
 		},
 		&set_learning_rate,
 		DEFAULT_LEARNING_RATE, 0, DBL_MAX, // 	0.0, 0.0, 1.0,
+		NULL, NULL, NULL
+	},
+	{
+		{"buffer_block_num", PGC_USERSET, DB_ML,
+			gettext_noop("Sets the block number in a buffer (default 1.0)."),
+			NULL
+		},
+		&set_buffer_block_num,
+		DEFAULT_BUFFER_BLOCK_NUM, 1, DBL_MAX, // 	0.0, 0.0, 1.0,
 		NULL, NULL, NULL
 	},
 	// added end

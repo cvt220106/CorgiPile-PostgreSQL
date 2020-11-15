@@ -129,6 +129,13 @@ initscan(HeapScanDesc scan, ScanKey key, bool is_rescan)
 	 */
 	scan->rs_nblocks = RelationGetNumberOfBlocks(scan->rs_rd);
 
+	// added by Lijie
+	// elog(LOG, "[Page] table_page_num = %d", scan->rs_nblocks);
+	// int block_page_num = set_io_big_block_size / (BLCKSZ / 1024);
+	// elog(LOG, "[Block] block_num = %d, block_page_num = %d", 
+	// 		scan->rs_nblocks / block_page_num, block_page_num);
+	// added end
+
 	/*
 	 * If the table is large relative to NBuffers, use a bulk-read access
 	 * strategy and enable synchronized scanning (see syncscan.c).  Although
@@ -979,6 +986,8 @@ heapgettup_pagemode(HeapScanDesc scan,
 
 			if (!drop_last && table_page_num % scan->page_num_per_block > 0)
 				scan->io_big_block_num = scan->io_big_block_num + 1; // 7 -> 8
+
+			elog(LOG, "[Table] table_page_num = %d, table_block_num = %d", table_page_num, scan->io_big_block_num);
 
 			scan->rs_shuffled_block_ids = (BlockNumber *) palloc(sizeof(BlockNumber) * scan->io_big_block_num);
 			

@@ -246,7 +246,7 @@ static void perform_SGD(Model *model, SGDTuple* sgd_tuple, SGDBatchState* batchs
         update_model(model, batchstate);
     else {
         // add the batch's gradients to the model, and reset the batch's gradients.
-        compute_tuple_gradient_loss_LR(sgd_tuple, model, batchstate);
+        compute_tuple_gradient_loss_SVM(sgd_tuple, model, batchstate);
         if (i == model->batch_size - 1)
             update_model(model, batchstate);
         
@@ -468,9 +468,9 @@ ExecInitLimit(Limit *node, EState *estate, int eflags)
 
 	//
 	const char* work_mem_str = GetConfigOption("work_mem", false, false);
-	elog(LOG, "[Param] work_mem = %s", work_mem_str);
-	elog(LOG, "[Param] io_block_size = %d", set_io_big_block_size);
-	elog(LOG, "[Param] buffer_size = %d", set_buffer_size);
+	elog(LOG, "[Param] work_mem = %s KB", work_mem_str);
+	elog(LOG, "[Param] io_block_size = %d KB", set_io_big_block_size);
+	elog(LOG, "[Param] buffer_size = %d tuples", set_buffer_tuple_num);
 	elog(LOG, "[Param] batch_size = %d", set_batch_size);
 	elog(LOG, "[Param] iter_num = %d", set_iter_num);
 	elog(LOG, "[Param] learning_rate = %f", set_learning_rate);

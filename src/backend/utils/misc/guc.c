@@ -2611,6 +2611,18 @@ static struct config_real ConfigureNamesReal[] =
 
 static struct config_string ConfigureNamesString[] =
 {
+	// added by Lijie
+	{
+		{"model", PGC_USERSET, DB_ML,
+			gettext_noop("Sets the training model (e.g., SVM, LR)."),
+			NULL
+		},
+		&set_model_name,
+		DEFAULT_MODEL_NAME,
+		NULL, NULL, NULL
+	},
+	// added end
+	
 	{
 		{"archive_command", PGC_SIGHUP, WAL_ARCHIVING,
 			gettext_noop("Sets the shell command that will be called to archive a WAL file."),

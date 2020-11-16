@@ -42,6 +42,7 @@ typedef struct HeapScanDescData
 	BlockNumber shuffled_block_id_array_index; // only used for ShuffleScan operator
 	BlockNumber page_num_per_block;
 	BlockNumber io_big_block_num;
+	bool rescaned;
 
 	bool drop_last; // drop the last unfilled block
 

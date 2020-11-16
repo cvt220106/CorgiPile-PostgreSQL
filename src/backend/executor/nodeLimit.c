@@ -37,6 +37,11 @@
 int set_batch_size = DEFAULT_BATCH_SIZE;
 int set_iter_num = DEFAULT_ITER_NUM;
 double set_learning_rate = DEFAULT_LEARNING_RATE;
+char* set_model_name = DEFAULT_MODEL_NAME;
+
+// char* table_name = "dflife";
+char* table_name = "forest";
+
 
 
 
@@ -60,25 +65,14 @@ static void transfer_slot_to_sgd_tuple(TupleTableSlot* slot, SGDTuple* sgd_tuple
 Model* init_model(int n_features) {
     Model* model = (Model *) palloc0(sizeof(Model));
 
-	/* for dblife */
-	// select * from dblife order by did;
+	model->model_name = set_model_name;
 	model->total_loss = 0;
-    model->batch_size = set_batch_size;
-    model->learning_rate = set_learning_rate;
-    model->n_features = 41270;
+	model->batch_size = set_batch_size;
+	model->iter_num = set_iter_num;
+	model->learning_rate = set_learning_rate;
 	model->tuple_num = 0;
-	model->iter_num = set_iter_num; // to change
-	
+	model->n_features = n_features;
 
-	/* for forest 
-	// select * from forest order by did;
-	model->total_loss = 0;
-    model->batch_size = 1000;
-    model->learning_rate = 0.5;
-    model->n_features = 54;
-	model->tuple_num = 0;
-	model->iter_num = 50; // to change
-	*/
     // use memorycontext later
 	model->w = (double *) palloc0(sizeof(double) * n_features);
 
@@ -126,20 +120,20 @@ static SGDTupleDesc* init_SGDTupleDesc(int col_num, int n_features) {
 	v double precision[],
 	label integer);
 	*/
-	/* for dblife */
-	sgd_tupledesc->k_col = 1; 
-	sgd_tupledesc->v_col = 2;
-	sgd_tupledesc->label_col = 3;
-	sgd_tupledesc->n_features = n_features;
+	if (strcmp(table_name, "dblife") == 0) {
+		/* for dblife */
+		sgd_tupledesc->k_col = 1; 
+		sgd_tupledesc->v_col = 2;
+		sgd_tupledesc->label_col = 3;
+	}
+	else if (strcmp(table_name, "forest") == 0) {
+		/* for forest */
+		sgd_tupledesc->k_col = -1; // from 0
+		sgd_tupledesc->v_col = 1;
+		sgd_tupledesc->label_col = 2;
+	}
 	
-
-	/* for forest  
-	sgd_tupledesc->k_col = -1; // from 0
-	sgd_tupledesc->v_col = 1;
-	sgd_tupledesc->label_col = 2;
 	sgd_tupledesc->n_features = n_features;
-	*/
-
     return sgd_tupledesc;
 }
 
@@ -245,8 +239,18 @@ static void perform_SGD(Model *model, SGDTuple* sgd_tuple, SGDBatchState* batchs
     if (sgd_tuple == NULL) /* slot == NULL means the end of the table. */
         update_model(model, batchstate);
     else {
+		if (strcmp(model->model_name, "SVM") == 0)
         // add the batch's gradients to the model, and reset the batch's gradients.
-        compute_tuple_gradient_loss_SVM(sgd_tuple, model, batchstate);
+        	compute_tuple_gradient_loss_SVM(sgd_tuple, model, batchstate);
+		else if (strcmp(model->model_name, "LR") == 0)
+			compute_tuple_gradient_loss_LR(sgd_tuple, model, batchstate);
+		
+		else {
+			elog(ERROR, "The model name %s cannot be recognized!", model->model_name);
+			exit(1);
+		}
+		
+		
         if (i == model->batch_size - 1)
             update_model(model, batchstate);
         
@@ -392,7 +396,7 @@ ExecLimit(LimitState *node)
 				if (i == iter_num) {
 					// elog(LOG, "[Iteartion %d] Finalize the model.", i);
 					perform_SGD(node->model, NULL, batchstate, ith_tuple);
-					elog(LOG, "[Finish iteartion %d] Loss = %f, parse_t = %fs, comp_t = %fs", 
+					elog(LOG, "[Iter %d] Loss = %f, parse_t = %fs, comp_t = %fs", 
 							i, model->total_loss, parse_time, comp_time);
                 	// can also free_SGDBatchState in ExecEndSGD
                 	free_SGDBatchState(batchstate);
@@ -403,7 +407,7 @@ ExecLimit(LimitState *node)
 				else {
 					// Current iteration ends, update model and print metrics
 					perform_SGD(node->model, NULL, batchstate, ith_tuple);
-					elog(LOG, "[Finish iteartion %d] Loss = %f, parse_t = %fs, comp_t = %fs", 
+					elog(LOG, "[Iter %d] Loss = %f, parse_t = %fs, comp_t = %fs", 
 							i, model->total_loss, parse_time, comp_time);
 					model->total_loss = 0;
 					parse_time = 0;
@@ -468,6 +472,8 @@ ExecInitLimit(Limit *node, EState *estate, int eflags)
 
 	//
 	const char* work_mem_str = GetConfigOption("work_mem", false, false);
+	elog(LOG, " ========================= Begin Training =========================");
+	elog(LOG, "[Param] model_name = %s", set_model_name);
 	elog(LOG, "[Param] work_mem = %s KB", work_mem_str);
 	elog(LOG, "[Param] io_block_size = %d KB", set_io_big_block_size);
 	elog(LOG, "[Param] buffer_size = %d tuples", set_buffer_tuple_num);
@@ -484,15 +490,21 @@ ExecInitLimit(Limit *node, EState *estate, int eflags)
 	sgdstate->ps.state = estate;
     sgdstate->sgd_done = false;
 
-	// for forest
-    // int n_features = 54;
+
+	int n_features;
+	if (strcmp(table_name, "dblife") == 0)
+		// for dblife
+		n_features = 41270; 
+	else if (strcmp(table_name, "forest") == 0)
+		// for forest
+   	 	n_features = 54;
     
-	// for dblife
-	int n_features = 41270; 
+	
 
     sgdstate->model = init_model(n_features);
 	
-	elog(LOG, "[SVM] Initialize SVM model");
+
+	elog(LOG, "[Model] Initialize %s model", sgdstate->model->model_name);
     // elog(LOG, "[SVM] loss = 0, p1 = 0, p2 = 0, gradient = 0, batch_size = 10, learning_rate = 0.1");
 
 	/*

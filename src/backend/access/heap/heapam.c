@@ -987,7 +987,8 @@ heapgettup_pagemode(HeapScanDesc scan,
 			if (!drop_last && table_page_num % scan->page_num_per_block > 0)
 				scan->io_big_block_num = scan->io_big_block_num + 1; // 7 -> 8
 
-			elog(LOG, "[Table] table_page_num = %d, table_block_num = %d", table_page_num, scan->io_big_block_num);
+			if (!scan->rescaned)
+				elog(LOG, "[Table] table_page_num = %d, table_block_num = %d", table_page_num, scan->io_big_block_num);
 
 			scan->rs_shuffled_block_ids = (BlockNumber *) palloc(sizeof(BlockNumber) * scan->io_big_block_num);
 			
@@ -1587,6 +1588,7 @@ heap_beginscan_internal(Relation relation, Snapshot snapshot,
 	scan->io_big_block_num = 0;
 	scan->page_num_per_block = 0;
 	scan->drop_last = false;
+	scan->rescaned = false;
 	// Lijie: add end
 
 
@@ -1654,6 +1656,7 @@ heap_rescan(HeapScanDesc scan,
 	scan->io_big_block_num = 0;
 	scan->page_num_per_block = 0;
 	scan->drop_last = false;
+	scan->rescaned = true;
 	// Lijie: add end
 }
 

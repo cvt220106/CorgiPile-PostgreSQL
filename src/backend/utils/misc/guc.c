@@ -1707,6 +1707,17 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
+		{"block_page_num", PGC_USERSET, DB_ML,
+			gettext_noop("Sets the number of pages in a block."),
+			gettext_noop("This default value is 1000 pages per block."),
+			NULL
+		},
+		&set_block_page_num,
+		DEFAULT_BLOCK_PAGE_NUM, 1, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"buffer_size", PGC_USERSET, DB_ML,
 			gettext_noop("Sets the buffer size for shuffling tuples, in kilobytes."),
 			gettext_noop("This default value is 819200 (100 pages)."),
@@ -1717,9 +1728,11 @@ static struct config_int ConfigureNamesInt[] =
 		NULL, NULL, NULL
 	},
 
+	
+
 	{
 		{"buffer_tuple_num", PGC_USERSET, DB_ML,
-			gettext_noop("Sets the number of tuples in a  buffer for shuffling."),
+			gettext_noop("Sets the number of tuples in a buffer for shuffling."),
 			gettext_noop("This default value is 1000 (tuples)."),
 			NULL
 		},

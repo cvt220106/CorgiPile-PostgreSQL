@@ -1,9 +1,10 @@
 #ifndef SGDMODEL_H
 #define SGDMODEL_H
 
+#define DEFAULT_BLOCK_PAGE_NUM 256 // 256 * 8KB = 2MB
 #define DEFAULT_IO_BIG_BLOCK_SIZE  800 // 1 page = 8K, default 10 pages
 #define DEFAULT_BUFFER_SIZE  800 // default 100 pages = 800KB
-#define DEFAULT_BUFFER_TUPLE_NUM 10000
+#define DEFAULT_BUFFER_TUPLE_NUM 40000
 #define DEFAULT_BUFFER_BLOCK_NUM 1.0
 
 
@@ -27,6 +28,7 @@ typedef struct Model {
 // guc variables
 // can be set via "SET VAR = XX" in the psql console
 extern int set_io_big_block_size;
+extern int set_block_page_num;
 extern int set_buffer_size;
 extern int set_buffer_tuple_num;
 extern double set_buffer_block_num;
@@ -37,6 +39,8 @@ extern double set_learning_rate;
 
 extern char* set_model_name;
 extern char* table_name;
+
+extern int table_page_number;
 
 
 #endif   

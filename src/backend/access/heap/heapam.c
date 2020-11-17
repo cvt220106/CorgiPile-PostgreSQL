@@ -86,6 +86,8 @@ bool		synchronize_seqscans = true;
 
 int set_io_big_block_size = DEFAULT_IO_BIG_BLOCK_SIZE;
 
+int set_block_page_num = DEFAULT_BLOCK_PAGE_NUM;
+
 
 static HeapScanDesc heap_beginscan_internal(Relation relation,
 						Snapshot snapshot,
@@ -977,8 +979,9 @@ heapgettup_pagemode(HeapScanDesc scan,
 			}
 
 			Size page_size = BLCKSZ / 1024; // default 8KB
-			scan->page_num_per_block = set_io_big_block_size / page_size; // 10MB / pageSize (8KB) = 1280 pages per io_block
-		
+			// scan->page_num_per_block = set_io_big_block_size / page_size; // 10MB / pageSize (8KB) = 1280 pages per io_block
+			scan->page_num_per_block = set_block_page_num;
+
 			BlockNumber table_page_num = scan->rs_nblocks; // e.g., 10000
 			
 			bool drop_last = scan->drop_last;
@@ -987,9 +990,11 @@ heapgettup_pagemode(HeapScanDesc scan,
 			if (!drop_last && table_page_num % scan->page_num_per_block > 0)
 				scan->io_big_block_num = scan->io_big_block_num + 1; // 7 -> 8
 
-			if (!scan->rescaned)
+			if (!scan->rescaned) {
 				elog(LOG, "[Table] table_page_num = %d, table_block_num = %d", table_page_num, scan->io_big_block_num);
-
+				table_page_number = table_page_num;
+			}
+				
 			scan->rs_shuffled_block_ids = (BlockNumber *) palloc(sizeof(BlockNumber) * scan->io_big_block_num);
 			
 			// rs_shuffled_block_ids = [0, 1280, 2560, 3840, 5120, 6400, 7680, 8960]

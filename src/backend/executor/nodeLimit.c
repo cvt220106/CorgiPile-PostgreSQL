@@ -38,9 +38,11 @@ int set_batch_size = DEFAULT_BATCH_SIZE;
 int set_iter_num = DEFAULT_ITER_NUM;
 double set_learning_rate = DEFAULT_LEARNING_RATE;
 char* set_model_name = DEFAULT_MODEL_NAME;
+int table_page_number = 0;
 
 // char* table_name = "dflife";
 char* table_name = "forest";
+
 
 
 
@@ -377,6 +379,11 @@ ExecLimit(LimitState *node)
 
 	SGDTupleDesc* sgd_tupledesc = init_SGDTupleDesc(col_num, model->n_features);
 
+
+	// for counting execution time for each iteration
+	clock_t iter_start, iter_finish;
+	double iter_exec_time;
+
 	// for counting data parsing time
 	clock_t parse_start, parse_finish;
 	double parse_time = 0;
@@ -387,28 +394,35 @@ ExecLimit(LimitState *node)
 
 	// iterations
 	for (int i = 1; i <= iter_num; i++) {
+		iter_start = clock();
+
 		int ith_tuple = 0;
 		while(true) {
 			// get a tuple from ShuffleSortNode
 			slot = ExecProcNode(outerNode);
 
 			if (TupIsNull(slot)) {
-				if (i == iter_num) {
-					// elog(LOG, "[Iteartion %d] Finalize the model.", i);
-					perform_SGD(node->model, NULL, batchstate, ith_tuple);
-					elog(LOG, "[Iter %d] Loss = %f, parse_t = %fs, comp_t = %fs", 
-							i, model->total_loss, parse_time, comp_time);
-                	// can also free_SGDBatchState in ExecEndSGD
+				perform_SGD(node->model, NULL, batchstate, ith_tuple);
+
+				if (i == 1) {
+					double avg_page_tuple_num = (double) model->tuple_num / table_page_number;
+					elog(LOG, "[Computed Param] table_tuple_num = %d, buffer_block_num = %.2f", 
+						model->tuple_num, (double) set_buffer_tuple_num / (set_block_page_num * avg_page_tuple_num));
+				}
+
+				iter_finish = clock();
+				iter_exec_time = (double)(iter_finish - iter_start) / CLOCKS_PER_SEC; 
+				double read_time = iter_exec_time - parse_time - comp_time;
+				elog(LOG, "[Iter %d] Loss = %.2f, exec_t = %.2fs, read_t = %.2fs, parse_t = %.2fs, comp_t = %.2fs", 
+							i, model->total_loss, iter_exec_time, read_time, parse_time, comp_time);
+
+				if (i == iter_num) { // finish
                 	free_SGDBatchState(batchstate);
 					free_SGDTuple(sgd_tuple);
 					free_SGDTupleDesc(sgd_tupledesc);
 					break;	
 				}
-				else {
-					// Current iteration ends, update model and print metrics
-					perform_SGD(node->model, NULL, batchstate, ith_tuple);
-					elog(LOG, "[Iter %d] Loss = %f, parse_t = %fs, comp_t = %fs", 
-							i, model->total_loss, parse_time, comp_time);
+				else { // for the next iteration
 					model->total_loss = 0;
 					parse_time = 0;
 					comp_time = 0;
@@ -472,11 +486,12 @@ ExecInitLimit(Limit *node, EState *estate, int eflags)
 
 	//
 	const char* work_mem_str = GetConfigOption("work_mem", false, false);
-	elog(LOG, " ========================= Begin Training =========================");
-	elog(LOG, "[Param] model_name = %s", set_model_name);
+	elog(LOG, "============== Begin Training on %s Using %s Model ==============", table_name, set_model_name);
+	// elog(LOG, "[Param] model_name = %s", set_model_name);
 	elog(LOG, "[Param] work_mem = %s KB", work_mem_str);
-	elog(LOG, "[Param] io_block_size = %d KB", set_io_big_block_size);
-	elog(LOG, "[Param] buffer_size = %d tuples", set_buffer_tuple_num);
+	elog(LOG, "[Param] block_page_num = %d pages", set_block_page_num);
+	// elog(LOG, "[Param] io_block_size = %d pages", set_io_big_block_size);
+	elog(LOG, "[Param] buffer_tuple_num = %d tuples", set_buffer_tuple_num);
 	elog(LOG, "[Param] batch_size = %d", set_batch_size);
 	elog(LOG, "[Param] iter_num = %d", set_iter_num);
 	elog(LOG, "[Param] learning_rate = %f", set_learning_rate);

@@ -322,9 +322,10 @@ transfer_slot_to_sgd_tuple(
 	}
 	else {
 		Assert(n_features == v_num);
-		for (int i = 0; i < v_num; i++) {
-			features[i] = v[i];
-		}
+		// for (int i = 0; i < v_num; i++) {
+		// 	features[i] = v[i];
+		// }
+		memcpy(features, v, v_num * sizeof(int));
 	}
 	
 }
@@ -413,7 +414,7 @@ ExecLimit(LimitState *node)
 				iter_finish = clock();
 				iter_exec_time = (double)(iter_finish - iter_start) / CLOCKS_PER_SEC; 
 				double read_time = iter_exec_time - parse_time - comp_time;
-				elog(LOG, "[Iter %d] Loss = %.2f, exec_t = %.2fs, read_t = %.2fs, parse_t = %.2fs, comp_t = %.2fs", 
+				elog(LOG, "[Iter %2d] Loss = %.2f, exec_t = %.2fs, read_t = %.2fs, parse_t = %.2fs, comp_t = %.2fs", 
 							i, model->total_loss, iter_exec_time, read_time, parse_time, comp_time);
 
 				if (i == iter_num) { // finish

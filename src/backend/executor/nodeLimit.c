@@ -41,11 +41,9 @@ char* set_model_name = DEFAULT_MODEL_NAME;
 int table_page_number = 0;
 
 // char* table_name = "dflife";
-char* table_name = "forest";
+char* set_table_name = "forest";
 
-
-
-
+bool set_run_test = true;
 
 static Model* init_model(int n_features);
 static void ExecClearModel(Model* model);
@@ -58,6 +56,7 @@ static void free_SGDTuple(SGDTuple* sgd_tuple);
 static void free_SGDTupleDesc(SGDTupleDesc* sgd_tupledesc);
 static void compute_tuple_gradient_loss_LR(SGDTuple* tp, Model* model, SGDBatchState* batchstate);
 static void compute_tuple_gradient_loss_SVM(SGDTuple* tp, Model* model, SGDBatchState* batchstate);
+static void compute_tuple_accuracy(Model* model, SGDTuple* tp, TestState* test_state);
 static void update_model(Model* model, SGDBatchState* batchstate);
 static void perform_SGD(Model *model, SGDTuple* sgd_tuple, SGDBatchState* batchstate, int i);
 static void transfer_slot_to_sgd_tuple(TupleTableSlot* slot, SGDTuple* sgd_tuple, SGDTupleDesc* sgd_tupledesc);
@@ -102,6 +101,18 @@ static SGDBatchState* init_SGDBatchState(int n_features) {
     return batchstate;
 }
 
+
+static TestState* init_TestState(bool run_test) {
+	TestState* test_state = NULL;
+	if (run_test) {
+		test_state = (TestState *) palloc0(sizeof(TestState));
+   		test_state->test_total_loss = 0;
+		test_state->test_accuracy = 0;
+		test_state->right_count = 0;
+	}
+    return test_state;
+}
+
 static SGDTuple* init_SGDTuple(int n_features) {
     SGDTuple* sgd_tuple = (SGDTuple *) palloc0(sizeof(SGDTuple));
     sgd_tuple->features = (double *) palloc0(sizeof(double) * n_features);
@@ -122,13 +133,13 @@ static SGDTupleDesc* init_SGDTupleDesc(int col_num, int n_features) {
 	v double precision[],
 	label integer);
 	*/
-	if (strcmp(table_name, "dblife") == 0) {
+	if (strcmp(set_table_name, "dblife") == 0) {
 		/* for dblife */
 		sgd_tupledesc->k_col = 1; 
 		sgd_tupledesc->v_col = 2;
 		sgd_tupledesc->label_col = 3;
 	}
-	else if (strcmp(table_name, "forest") == 0) {
+	else if (strcmp(set_table_name, "forest") == 0) {
 		/* for forest */
 		sgd_tupledesc->k_col = -1; // from 0
 		sgd_tupledesc->v_col = 1;
@@ -146,6 +157,12 @@ static void clear_SGDBatchState(SGDBatchState* batchstate, int n_features) {
 	batchstate->tuple_num = 0;
 }
 
+static void clear_TestState(TestState* test_state) {
+	test_state->right_count = 0;
+	test_state->test_accuracy = 0;
+	test_state->test_total_loss = 0;
+}
+
 static void free_SGDBatchState(SGDBatchState* batchstate) {
     pfree(batchstate->gradients);
     pfree(batchstate);
@@ -160,6 +177,10 @@ static void free_SGDTupleDesc(SGDTupleDesc* sgd_tupledesc) {
     pfree(sgd_tupledesc->values);
     pfree(sgd_tupledesc->isnulls);
 	pfree(sgd_tupledesc);
+}
+
+static void free_TestState(TestState* test_state) {
+    pfree(test_state);
 }
 
 static void
@@ -222,18 +243,21 @@ compute_tuple_gradient_loss_SVM(SGDTuple* tp, Model* model, SGDBatchState* batch
 }
 
 static void update_model(Model* model, SGDBatchState* batchstate) {
+	if (batchstate->tuple_num > 0) {
+		 // add graidents to the model and clear the batch gradients
+		for (int i = 0; i < model->n_features; i++) {
+			model->w[i] = model->w[i] - model->learning_rate * batchstate->gradients[i] / batchstate->tuple_num;
+			// model->w[i] = model->w[i] - model->learning_rate * 
+			// 			 (batchstate->gradients[i] / batchstate->tuple_num + 0.01 * model->w[i]);
+			batchstate->gradients[i] = 0;
+		}
 
-    // add graidents to the model and clear the batch gradients
-    for (int i = 0; i < model->n_features; i++) {
-        model->w[i] = model->w[i] - model->learning_rate * batchstate->gradients[i] / batchstate->tuple_num;
-		// model->w[i] = model->w[i] - model->learning_rate * 
-		// 			 (batchstate->gradients[i] / batchstate->tuple_num + 0.01 * model->w[i]);
-        batchstate->gradients[i] = 0;
-    }
-
-    model->total_loss = model->total_loss + batchstate->loss;
-    batchstate->loss = 0;
-	batchstate->tuple_num = 0;
+		model->total_loss = model->total_loss + batchstate->loss;
+		 
+		batchstate->loss = 0;
+		batchstate->tuple_num = 0;
+	}
+   
 }
 
 
@@ -358,6 +382,8 @@ ExecLimit(LimitState *node)
 	 */
 	SGDBatchState* batchstate = init_SGDBatchState(model->n_features);
 	SGDTuple* sgd_tuple = init_SGDTuple(model->n_features);
+	TestState* test_state = init_TestState(set_run_test);
+
 	//Datum values[model->n_features + model-> slot->]
 	// ShuffleSort	   *plannode = (ShuffleSort *) node->ss.ps.plan;
 	PlanState  *outerNode;
@@ -418,9 +444,14 @@ ExecLimit(LimitState *node)
 							i, model->total_loss, iter_exec_time, read_time, parse_time, comp_time);
 
 				if (i == iter_num) { // finish
-                	free_SGDBatchState(batchstate);
-					free_SGDTuple(sgd_tuple);
-					free_SGDTupleDesc(sgd_tupledesc);
+					if (set_run_test == false) {
+						free_SGDBatchState(batchstate);
+						free_SGDTuple(sgd_tuple);
+						free_SGDTupleDesc(sgd_tupledesc);
+					}  	
+					else {
+						ExecReScan(outerNode);
+					}
 					break;	
 				}
 				else { // for the next iteration
@@ -451,6 +482,34 @@ ExecLimit(LimitState *node)
 
 		// decay the learning rate with 0.95^iter_num
 		model->learning_rate = model->learning_rate * 0.95;
+
+		if (set_run_test) {
+			while(true) {
+				slot = ExecProcNode(outerNode);
+				
+				if (TupIsNull(slot)) {
+					test_state->test_accuracy = (double) test_state->right_count / model->tuple_num;
+					
+					elog(LOG, "[Iter %2d][Test] test_total_loss = %.2f, test_accuracy = %.2f", 
+							i, test_state->test_total_loss, test_state->test_accuracy);
+
+					if (i == iter_num) { // finish
+						free_SGDBatchState(batchstate);
+						free_SGDTuple(sgd_tuple);
+						free_SGDTupleDesc(sgd_tupledesc);
+						break;	
+					}
+					else { // for the next iteration
+						clear_TestState(test_state);
+						ExecReScan(outerNode);	
+						break;
+					}
+				}
+				transfer_slot_to_sgd_tuple(slot, sgd_tuple, sgd_tupledesc);
+				compute_tuple_accuracy(node->model, sgd_tuple, test_state);
+			}
+
+		}
 	
 	}
 		
@@ -468,7 +527,58 @@ ExecLimit(LimitState *node)
 	return slot;
 }
 
+void compute_tuple_accuracy(Model* model, SGDTuple* tp, TestState* test_state) {
+	double y = tp->class_label;
+    double* x = tp->features;
+	int class_label = tp->class_label;
 
+    int n = model->n_features;
+	double tuple_loss = 0;
+	
+
+
+    // compute loss of the incoming tuple
+	if (strcmp(model->model_name, "LR") == 0) {
+		double wx = 0;
+    	for (int i = 0; i < n; i++)
+        	wx = wx + model->w[i] * x[i];
+    	double ywx = y * wx;
+		tuple_loss = log(1 + exp(-ywx));
+		
+		// By default, if f(wx) > 0.5, the outcome is positive, or negative otherwise
+		double f_wx = 1 / (1 + exp(-wx));
+		if (f_wx >= 0.5 && class_label == 1) {
+			test_state->right_count += 1;
+		}
+		else if (f_wx < 0.5 && class_label == -1) {
+			test_state->right_count += 1;
+		}
+			
+
+
+	}
+	else if (strcmp(model->model_name, "SVM") == 0) {
+		double wx = 0;
+		for (int i = 0; i < n; i++)
+			wx = wx + model->w[i] * x[i];
+		double ywx = y * wx;
+		// compute the loss of the incoming tuple
+		tuple_loss = 1 - ywx;
+		
+		if (tuple_loss < 0)
+        	tuple_loss = 0;
+
+		//  if wx >= 0 then the outcome is positive, and negative otherwise.
+		if (wx >= 0 && class_label == 1) {
+			test_state->right_count += 1;
+		} 
+		else if (wx < 0 && class_label == -1) {
+			test_state->right_count += 1;
+		}
+	}
+
+	test_state->test_total_loss += tuple_loss;
+}
 
 /* ----------------------------------------------------------------
  *		ExecInitLimit
@@ -487,8 +597,9 @@ ExecInitLimit(Limit *node, EState *estate, int eflags)
 
 	//
 	const char* work_mem_str = GetConfigOption("work_mem", false, false);
-	elog(LOG, "============== Begin Training on %s Using %s Model ==============", table_name, set_model_name);
+	elog(LOG, "============== Begin Training on %s Using %s Model ==============", set_table_name, set_model_name);
 	// elog(LOG, "[Param] model_name = %s", set_model_name);
+	elog(LOG, "[Param] run_test = %d", set_run_test);
 	elog(LOG, "[Param] work_mem = %s KB", work_mem_str);
 	elog(LOG, "[Param] block_page_num = %d pages", set_block_page_num);
 	// elog(LOG, "[Param] io_block_size = %d pages", set_io_big_block_size);
@@ -508,10 +619,10 @@ ExecInitLimit(Limit *node, EState *estate, int eflags)
 
 
 	int n_features;
-	if (strcmp(table_name, "dblife") == 0)
+	if (strcmp(set_table_name, "dblife") == 0)
 		// for dblife
 		n_features = 41270; 
-	else if (strcmp(table_name, "forest") == 0)
+	else if (strcmp(set_table_name, "forest") == 0)
 		// for forest
    	 	n_features = 54;
     

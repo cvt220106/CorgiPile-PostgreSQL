@@ -667,6 +667,18 @@ const char *const config_type_names[] =
 
 static struct config_bool ConfigureNamesBool[] =
 {
+	
+	// added by Lijie
+	{
+		{"run_test", PGC_USERSET, DB_ML,
+			gettext_noop("Enables test after each training iteration."),
+			NULL
+		},
+		&set_run_test,
+		true,
+		NULL, NULL, NULL
+	},
+	// added end
 	{
 		{"enable_seqscan", PGC_USERSET, QUERY_TUNING_METHOD,
 			gettext_noop("Enables the planner's use of sequential-scan plans."),
@@ -1689,7 +1701,7 @@ static struct config_int ConfigureNamesInt[] =
 			GUC_UNIT_KB
 		},
 		&work_mem,
-		1024, 64, MAX_KILOBYTES,
+		102400, 64, MAX_KILOBYTES,
 		NULL, NULL, NULL
 	},
 
@@ -2626,12 +2638,22 @@ static struct config_string ConfigureNamesString[] =
 {
 	// added by Lijie
 	{
-		{"model", PGC_USERSET, DB_ML,
+		{"model_name", PGC_USERSET, DB_ML,
 			gettext_noop("Sets the training model (e.g., SVM, LR)."),
 			NULL
 		},
 		&set_model_name,
 		DEFAULT_MODEL_NAME,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"table_name", PGC_USERSET, DB_ML,
+			gettext_noop("Sets the table name (e.g., dblife, forest)."),
+			NULL
+		},
+		&set_table_name,
+		DEFAULT_TABLE_NAME,
 		NULL, NULL, NULL
 	},
 	// added end

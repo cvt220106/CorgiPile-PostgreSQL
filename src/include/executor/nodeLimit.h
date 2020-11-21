@@ -40,6 +40,13 @@ typedef struct SGDTuple
 	// int			tupindex;		/* the ith-tuple */
 } SGDTuple;
 
+typedef struct TestState
+{
+	double test_total_loss;
+	double test_accuracy;
+	int right_count; // rightly classified
+} TestState;
+
 typedef struct SGDTupleDesc
 { 
 	// e.g., features = [0.1, 0, 0.2, 0, 0, 0.3, 0, 0], class_label = -1

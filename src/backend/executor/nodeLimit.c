@@ -316,12 +316,12 @@ fast_transfer_slot_to_sgd_tuple(
 
 
 	Datum v_dat = heap_getattr(slot->tts_tuple, v_col + 1, slot->tts_tupleDescriptor, &isnull);
-	// heap_getattr_finish = clock();
+	//
 	// e.g., features = [0.1, 0, 0.2, 0, 0, 0.3, 0, 0], class_label = -1
 	// Tuple = {10, {0, 2, 5}, {0.1, 0.2, 0.3}, -1}
 	ArrayType  *v_array = DatumGetArrayTypeP(v_dat); // Datum{0.1, 0.2, 0.3}
 	//Datum label_dat = ; // Datum{-1}
-
+	// heap_getattr_finish = clock();
 
 	/* feature datum arrary => double* v */
 	//ArrayType  *v_array = DatumGetArrayTypeP(v_dat);
@@ -329,7 +329,8 @@ fast_transfer_slot_to_sgd_tuple(
 	double *v;
     int v_num = my_parse_array_no_copy((struct varlena*) v_array, 
             sizeof(float8), (char **) &v);
-
+	// int	v_num = ArrayGetNItems(ARR_NDIM(v_array), ARR_DIMS(v_array));
+	// double *v = (double *) ARR_DATA_PTR(v_array);
 	// my_parse_array_no_copy_finish = clock();
 	// if (rand() % 100000 == 0) {
 	// 	clock_t heap_getattr_time = heap_getattr_finish - heap_getattr_start; 
@@ -337,7 +338,7 @@ fast_transfer_slot_to_sgd_tuple(
 	// 	elog(LOG, "[heap_getattr_time = %ld us, my_parse_array_no_copy_time = %ld us]", 
 	// 						heap_getattr_time, my_parse_array_no_copy_time);
 
-	// }
+	//}
 
 
 	/* label dataum => int class_label */
@@ -357,6 +358,8 @@ fast_transfer_slot_to_sgd_tuple(
 		int *k;
     	int k_num = my_parse_array_no_copy((struct varlena*) k_array, 
             	sizeof(int), (char **) &k);
+		// int	k_num = ArrayGetNItems(ARR_NDIM(k_array), ARR_DIMS(k_array));
+		// int *k = (int *) ARR_DATA_PTR(k_array);
 
 		
 		// TODO: change to memset()
@@ -412,10 +415,11 @@ transfer_slot_to_sgd_tuple(
 	/* feature datum arrary => double* v */
 	ArrayType  *v_array = DatumGetArrayTypeP(v_dat);
 	//Assert(ARR_ELEMTYPE(array) == FLOAT4OID);
-	int	v_num = ArrayGetNItems(ARR_NDIM(v_array), ARR_DIMS(v_array));
-	double *v = (double *) ARR_DATA_PTR(v_array);
-	// for (int i = 0; i < v_num; i++)
-	// 	elog(LOG, "%f, ", v[i]);
+	// int	v_num = ArrayGetNItems(ARR_NDIM(v_array), ARR_DIMS(v_array));
+	// double *v = (double *) ARR_DATA_PTR(v_array);
+	double *v;
+    int v_num = my_parse_array_no_copy((struct varlena*) v_array, 
+            sizeof(float8), (char **) &v);
 
 
 	/* label dataum => int class_label */
@@ -431,8 +435,11 @@ transfer_slot_to_sgd_tuple(
 		/* k Datum array => int* k */
 		Datum k_dat = sgd_tupledesc->values[k_col]; // Datum{0, 2, 5}
 		ArrayType  *k_array = DatumGetArrayTypeP(k_dat);
-		int	k_num = ArrayGetNItems(ARR_NDIM(k_array), ARR_DIMS(k_array));
-		int *k = (int *) ARR_DATA_PTR(k_array);
+		// int	k_num = ArrayGetNItems(ARR_NDIM(k_array), ARR_DIMS(k_array));
+		// int *k = (int *) ARR_DATA_PTR(k_array);
+		int *k;
+    	int k_num = my_parse_array_no_copy((struct varlena*) k_array, 
+            	sizeof(int), (char **) &k);
 
 		// TODO: change to memset()
 		// for (int i = 0; i < n_features; i++) {
@@ -446,7 +453,7 @@ transfer_slot_to_sgd_tuple(
 		}
 	}
 	else {
-		Assert(n_features == v_num);
+		// Assert(n_features == v_num);
 		// for (int i = 0; i < v_num; i++) {
 		// 	features[i] = v[i];
 		// }
@@ -669,7 +676,7 @@ ExecLimit(LimitState *node)
 			}
 
 			parse_start = clock();
-			fast_transfer_slot_to_sgd_tuple(slot, sgd_tuple, sgd_tupledesc);
+			transfer_slot_to_sgd_tuple(slot, sgd_tuple, sgd_tupledesc);
 			parse_finish = clock();
 			parse_time += (double)(parse_finish - parse_start) / CLOCKS_PER_SEC;    
 
@@ -710,7 +717,7 @@ ExecLimit(LimitState *node)
 						break;
 					}
 				}
-				fast_transfer_slot_to_sgd_tuple(slot, sgd_tuple, sgd_tupledesc);
+				transfer_slot_to_sgd_tuple(slot, sgd_tuple, sgd_tupledesc);
 				compute_tuple_accuracy(node->model, sgd_tuple, test_state);
 			}
 

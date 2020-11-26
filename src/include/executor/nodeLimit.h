@@ -56,8 +56,8 @@ typedef struct SGDTupleDesc
 	int label_col; // 3
 	int n_features;  // 8
 	
-	Datum* values;
-	bool* isnulls;
+	// Datum* values;
+	// bool* isnulls;
 } SGDTupleDesc;
 
 

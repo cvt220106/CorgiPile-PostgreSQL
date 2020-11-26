@@ -62,8 +62,8 @@ static void compute_tuple_accuracy(Model* model, SGDTuple* tp, TestState* test_s
 static void update_model(Model* model, SGDBatchState* batchstate);
 static void perform_SGD(Model *model, SGDTuple* sgd_tuple, SGDBatchState* batchstate, int i);
 static void transfer_slot_to_sgd_tuple(TupleTableSlot* slot, SGDTuple* sgd_tuple, SGDTupleDesc* sgd_tupledesc);
-static void transfer_slot_to_sgd_tuple_bismarck(TupleTableSlot* slot, SGDTuple* sgd_tuple, SGDTupleDesc* sgd_tupledesc);
-static void fast_transfer_slot_to_sgd_tuple(TupleTableSlot* slot, SGDTuple* sgd_tuple, SGDTupleDesc* sgd_tupledesc);
+static void transfer_slot_to_sgd_tuple_by_slot_deform(TupleTableSlot* slot, SGDTuple* sgd_tuple, SGDTupleDesc* sgd_tupledesc);
+static void transfer_slot_to_sgd_tuple_getattr(TupleTableSlot* slot, SGDTuple* sgd_tuple, SGDTupleDesc* sgd_tupledesc);
 
 static int my_parse_array_no_copy(struct varlena* input, int typesize, char** output);
 
@@ -292,7 +292,7 @@ static void perform_SGD(Model *model, SGDTuple* sgd_tuple, SGDBatchState* batchs
 
 // Extract features and class label from Tuple
 static void
-fast_transfer_slot_to_sgd_tuple(
+transfer_slot_to_sgd_tuple_getattr (
 	TupleTableSlot* slot, 
 	SGDTuple* sgd_tuple, 
 	SGDTupleDesc* sgd_tupledesc) {
@@ -305,44 +305,23 @@ fast_transfer_slot_to_sgd_tuple(
 	int label_col = sgd_tupledesc->label_col;
 
 	bool isnull;
-	/* Datum => double/int */
-
-
-	// clock_t heap_getattr_start, heap_getattr_finish, my_parse_array_no_copy_finish;
-	
-	
-	// heap_getattr_start = clock();
-
-
-
-	Datum v_dat = heap_getattr(slot->tts_tuple, v_col + 1, slot->tts_tupleDescriptor, &isnull);
+	slot_getallattrs(slot);
+	// Datum v_dat = slot_getattr(slot, v_col + 1, &isnull);
+	Datum v_dat = slot->tts_values[v_col];
 	//
 	// e.g., features = [0.1, 0, 0.2, 0, 0, 0.3, 0, 0], class_label = -1
 	// Tuple = {10, {0, 2, 5}, {0.1, 0.2, 0.3}, -1}
 	ArrayType  *v_array = DatumGetArrayTypeP(v_dat); // Datum{0.1, 0.2, 0.3}
-	//Datum label_dat = ; // Datum{-1}
-	// heap_getattr_finish = clock();
-
-	/* feature datum arrary => double* v */
-	//ArrayType  *v_array = DatumGetArrayTypeP(v_dat);
-	//Assert(ARR_ELEMTYPE(array) == FLOAT4OID);
+	
 	double *v;
     int v_num = my_parse_array_no_copy((struct varlena*) v_array, 
             sizeof(float8), (char **) &v);
-	// int	v_num = ArrayGetNItems(ARR_NDIM(v_array), ARR_DIMS(v_array));
-	// double *v = (double *) ARR_DATA_PTR(v_array);
-	// my_parse_array_no_copy_finish = clock();
-	// if (rand() % 100000 == 0) {
-	// 	clock_t heap_getattr_time = heap_getattr_finish - heap_getattr_start; 
-	// 	clock_t my_parse_array_no_copy_time = my_parse_array_no_copy_finish - heap_getattr_finish;
-	// 	elog(LOG, "[heap_getattr_time = %ld us, my_parse_array_no_copy_time = %ld us]", 
-	// 						heap_getattr_time, my_parse_array_no_copy_time);
-
-	//}
-
 
 	/* label dataum => int class_label */
-	Datum label_dat = heap_getattr(slot->tts_tuple, label_col + 1, slot->tts_tupleDescriptor, &isnull);
+	// Datum label_dat = heap_getattr(slot->tts_tuple, label_col + 1, slot->tts_tupleDescriptor, &isnull);
+	// Datum label_dat = slot_getattr(slot, label_col + 1, &isnull);
+
+	Datum label_dat = slot->tts_values[label_col];
 	int label = DatumGetInt32(label_dat);
 	sgd_tuple->class_label = label;
 
@@ -353,19 +332,13 @@ fast_transfer_slot_to_sgd_tuple(
 	// if sparse dataset
 	if (k_col >= 0) {
 		/* k Datum array => int* k */
-		Datum k_dat = heap_getattr(slot->tts_tuple, k_col + 1, slot->tts_tupleDescriptor, &isnull); // Datum{0, 2, 5}
+		// Datum k_dat = heap_getattr(slot->tts_tuple, k_col + 1, slot->tts_tupleDescriptor, &isnull); // Datum{0, 2, 5}
+		Datum k_dat = slot->tts_values[k_col];
 		ArrayType  *k_array = DatumGetArrayTypeP(k_dat);
 		int *k;
     	int k_num = my_parse_array_no_copy((struct varlena*) k_array, 
             	sizeof(int), (char **) &k);
-		// int	k_num = ArrayGetNItems(ARR_NDIM(k_array), ARR_DIMS(k_array));
-		// int *k = (int *) ARR_DATA_PTR(k_array);
 
-		
-		// TODO: change to memset()
-		// for (int i = 0; i < n_features; i++) {
-		//  	features[i] = 0;
-		// }
 		memset(features, 0, sizeof(double) * n_features);
 
 		
@@ -373,17 +346,9 @@ fast_transfer_slot_to_sgd_tuple(
 			int f_index = k[i]; // {0, 2, 5}, k[1] = 2
 			features[f_index] = v[i]; // {0.1, 0.2, 0.3}, features[2] = 0.2
 		}
-
-		// e.g. {8217,20605,25822,35784}	{0.612639983844659,0.841817907816646,2.58537916287939,0.561555718668227}	1
-		// if (k_num == 4 & k[0] == 8217 && k[1] == 20605 && k[2] == 25822 && k[3] == 35784)
-		// 	elog(LOG, "features == {%f, %f, %f, %f}", v[0], v[1], v[2], v[3]);
 	}
 	
 	else {
-		// Assert(n_features == v_num);
-		// for (int i = 0; i < v_num; i++) {
-		// 	features[i] = v[i];
-		// }
 		memcpy(features, v, v_num * sizeof(double));
 	}
 	
@@ -415,7 +380,8 @@ transfer_slot_to_sgd_tuple(
 	/* feature datum arrary => double* v */
 	ArrayType  *v_array = DatumGetArrayTypeP(v_dat);
 	//Assert(ARR_ELEMTYPE(array) == FLOAT4OID);
-	// int	v_num = ArrayGetNItems(ARR_NDIM(v_array), ARR_DIMS(v_array));
+	//int	v_num = ArrayGetNItems(ARR_NDIM(v_array), ARR_DIMS(v_array));
+	// int	v_num = ARR_DIMS(v_array)[0];
 	// double *v = (double *) ARR_DATA_PTR(v_array);
 	double *v;
     int v_num = my_parse_array_no_copy((struct varlena*) v_array, 
@@ -464,37 +430,39 @@ transfer_slot_to_sgd_tuple(
 
 
 static void
-transfer_slot_to_sgd_tuple_bismarck(
+transfer_slot_to_sgd_tuple_by_slot_deform (
 	TupleTableSlot* slot, 
 	SGDTuple* sgd_tuple, 
 	SGDTupleDesc* sgd_tupledesc) {
 
 	// store the values of slot to values/isnulls arrays
-	/* slot => Datum values/isnulls */
-	// heap_deform_tuple(slot->tts_tuple, slot->tts_tupleDescriptor, sgd_tupledesc->values, sgd_tupledesc->isnulls);
-	
-	HeapTupleHeader tuple_header = slot->tts_tuple->t_data;
+	//heap_deform_tuple(slot->tts_tuple, slot->tts_tupleDescriptor, sgd_tupledesc->values, sgd_tupledesc->isnulls);
 
 	int k_col = sgd_tupledesc->k_col;
 	int v_col = sgd_tupledesc->v_col;
 	int label_col = sgd_tupledesc->label_col;
 
 	bool isnull;
-	/* Datum => double/int */
+
+	int attnum = HeapTupleHeaderGetNatts( slot->tts_tuple->t_data);
+	slot_deform_tuple(slot, attnum);
+	// Datum v_dat = slot_getattr(slot, v_col + 1, &isnull);
+	Datum v_dat = slot->tts_values[v_col];
+	//
 	// e.g., features = [0.1, 0, 0.2, 0, 0, 0.3, 0, 0], class_label = -1
 	// Tuple = {10, {0, 2, 5}, {0.1, 0.2, 0.3}, -1}
-	//Datum v_dat = GetAttributeByNum(tuple_header, v_col + 1, &isnull); // Datum{0.1, 0.2, 0.3}
-	//Datum label_dat = GetAttributeByNum(tuple_header, label_col + 1, &isnull); // Datum{-1}
-
-	// feature vector
-    ArrayType *v_array = (ArrayType *) GetAttributeByNum(tuple_header, v_col + 1, &isnull);
-    double *v;
+	ArrayType  *v_array = DatumGetArrayTypeP(v_dat); // Datum{0.1, 0.2, 0.3}
+	
+	double *v;
     int v_num = my_parse_array_no_copy((struct varlena*) v_array, 
             sizeof(float8), (char **) &v);
 
-
 	/* label dataum => int class_label */
-	int label = DatumGetInt32(GetAttributeByNum(tuple_header, label_col + 1, &isnull));
+	// Datum label_dat = heap_getattr(slot->tts_tuple, label_col + 1, slot->tts_tupleDescriptor, &isnull);
+	// Datum label_dat = slot_getattr(slot, label_col + 1, &isnull);
+
+	Datum label_dat = slot->tts_values[label_col];
+	int label = DatumGetInt32(label_dat);
 	sgd_tuple->class_label = label;
 
 
@@ -504,32 +472,23 @@ transfer_slot_to_sgd_tuple_bismarck(
 	// if sparse dataset
 	if (k_col >= 0) {
 		/* k Datum array => int* k */
-		// Datum k_dat = sgd_tupledesc->values[k_col]; // Datum{0, 2, 5}
-		// ArrayType  *k_array = DatumGetArrayTypeP(k_dat);
-		// int	k_num = ArrayGetNItems(ARR_NDIM(k_array), ARR_DIMS(k_array));
-		// int *k = (int *) ARR_DATA_PTR(k_array);
-
-		ArrayType *k_array = (ArrayType *) GetAttributeByNum(tuple_header, k_col + 1, &isnull);
-    	int *k;
+		// Datum k_dat = heap_getattr(slot->tts_tuple, k_col + 1, slot->tts_tupleDescriptor, &isnull); // Datum{0, 2, 5}
+		Datum k_dat = slot->tts_values[k_col];
+		ArrayType  *k_array = DatumGetArrayTypeP(k_dat);
+		int *k;
     	int k_num = my_parse_array_no_copy((struct varlena*) k_array, 
             	sizeof(int), (char **) &k);
 
-		// TODO: change to memset()
-		// for (int i = 0; i < n_features; i++) {
-		// 	features[i] = 0;
-		// }
 		memset(features, 0, sizeof(double) * n_features);
 
+		
 		for (int i = 0; i < k_num; i++) {
 			int f_index = k[i]; // {0, 2, 5}, k[1] = 2
 			features[f_index] = v[i]; // {0.1, 0.2, 0.3}, features[2] = 0.2
 		}
 	}
+	
 	else {
-		Assert(n_features == v_num);
-		// for (int i = 0; i < v_num; i++) {
-		// 	features[i] = v[i];
-		// }
 		memcpy(features, v, v_num * sizeof(double));
 	}
 	
@@ -676,7 +635,7 @@ ExecLimit(LimitState *node)
 			}
 
 			parse_start = clock();
-			transfer_slot_to_sgd_tuple(slot, sgd_tuple, sgd_tupledesc);
+			transfer_slot_to_sgd_tuple_by_slot_deform(slot, sgd_tuple, sgd_tupledesc);
 			parse_finish = clock();
 			parse_time += (double)(parse_finish - parse_start) / CLOCKS_PER_SEC;    
 
@@ -717,7 +676,7 @@ ExecLimit(LimitState *node)
 						break;
 					}
 				}
-				transfer_slot_to_sgd_tuple(slot, sgd_tuple, sgd_tupledesc);
+				transfer_slot_to_sgd_tuple_by_slot_deform(slot, sgd_tuple, sgd_tupledesc);
 				compute_tuple_accuracy(node->model, sgd_tuple, test_state);
 			}
 

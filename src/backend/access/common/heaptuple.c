@@ -75,6 +75,9 @@
  * ----------------------------------------------------------------
  */
 
+// added by Lijie
+void slot_deform_tuple(TupleTableSlot *slot, int natts);
+// added end
 
 /*
  * heap_compute_data_size
@@ -1044,7 +1047,8 @@ heap_deformtuple(HeapTuple tuple,
  *		re-computing information about previously extracted attributes.
  *		slot->tts_nvalid is the number of attributes already extracted.
  */
-static void
+//static void
+void
 slot_deform_tuple(TupleTableSlot *slot, int natts)
 {
 	HeapTuple	tuple = slot->tts_tuple;

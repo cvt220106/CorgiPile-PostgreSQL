@@ -330,7 +330,7 @@ struct Tuplesortstate
 	 * position is also critical state.)
 	 */
 	// int			result_tape;	/* actual tape number of finished output */
-	int			current;		/* array index (only used if SORTEDINMEM) */
+	int			fetchindex;		/* array index (only used if SORTEDINMEM) */
 	bool		eof_reached;	/* reached EOF (needed for cursors) */
 
 	/* markpos_xxx holds marked position for mark and restore */
@@ -492,7 +492,7 @@ shuffle_tuple(SortTuple *a, size_t n)
 
 
 void 
-clear_tupleshufflesort_state(Tuplesortstate* tuplesortstate)
+free_tupleshufflesort_state(Tuplesortstate* tuplesortstate)
 {
 	tuplesortstate->memtupcount = 0;
 	FREEMEM(tuplesortstate, GetMemoryChunkSpace(tuplesortstate->memtuples));
@@ -609,6 +609,15 @@ puttuple_into_buffer(TupleShuffleSortState *state, ShuffleSortTuple *tuple, bool
  */
 // #include "qsort_tuple.c"
 
+static void reset_buffer_read_write_index(Tuplesortstate *state) {
+	state->memtupcount = 0; // how many tuples are stored in the buffer right now
+	state->fetchindex = 0;
+
+	// Are not used
+	state->markpos_offset = 0;
+	state->markpos_eof = false;
+	state->eof_reached = false;
+}
 
 /*
  *		tuplesort_begin_xxx
@@ -670,8 +679,9 @@ tupleshufflesort_begin_common(int workMem)
 	state->shufflesortcontext = shufflesortcontext;
 	// state->tapeset = NULL;
 
-	state->memtupcount = 0;
-	state->current = 0;
+	reset_buffer_read_write_index(state);
+
+	
 
 	/*
 	 * Initial size of array must be more than ALLOCSET_SEPARATE_THRESHOLD;
@@ -768,6 +778,7 @@ tupleshufflesort_end(Tuplesortstate *state)
 {
 	/* context swap probably not needed, but let's be safe */
 	MemoryContext oldcontext = MemoryContextSwitchTo(state->shufflesortcontext);
+
 // #ifdef TRACE_SHUFFLE_SORT
 // 	long		spaceUsed;
 // 	if (state->tapeset)
@@ -976,14 +987,14 @@ tupleshufflesort_gettuple_common(Tuplesortstate *state, SortTuple *stup)
 {
 	bool tuple_left = true;
 	// unsigned int tuplen;
-	if (state->current < state->memtupcount)
-		*stup = state->memtuples[state->current++];
+	if (state->fetchindex < state->memtupcount)
+		*stup = state->memtuples[state->fetchindex++];
 
 
 	// if there is not any tuple left in the buffer, clear the buffer indexes
-	if (state->current == state->memtupcount) {
+	if (state->fetchindex == state->memtupcount) {
 		tuple_left = false;
-		state->current = 0;
+		state->fetchindex = 0;
 		state->memtupcount = 0;
 	}
 	return tuple_left;
@@ -1237,7 +1248,7 @@ tupleshufflesort_markpos(Tuplesortstate *state)
 	// Assert(state->randomAccess);
 
 	
-	state->markpos_offset = state->current;
+	state->markpos_offset = state->fetchindex;
 	state->markpos_eof = state->eof_reached;
 
 	MemoryContextSwitchTo(oldcontext);
@@ -1253,7 +1264,7 @@ tupleshufflesort_restorepos(Tuplesortstate *state)
 	MemoryContext oldcontext = MemoryContextSwitchTo(state->shufflesortcontext);
 
 	// Assert(state->randomAccess);
-	state->current = state->markpos_offset;
+	state->fetchindex = state->markpos_offset;
 	state->eof_reached = state->markpos_eof;
 	
 	MemoryContextSwitchTo(oldcontext);
@@ -1262,17 +1273,11 @@ tupleshufflesort_restorepos(Tuplesortstate *state)
 void
 tupleshufflesort_rescan(Tuplesortstate *state)
 {
-	MemoryContext oldcontext = MemoryContextSwitchTo(state->shufflesortcontext);
+	//MemoryContext oldcontext = MemoryContextSwitchTo(state->shufflesortcontext);
 
-	// Assert(state->randomAccess);
-
-	state->current = 0;
-	state->eof_reached = false;
-	state->markpos_offset = 0;
-	state->markpos_eof = false;
-	state->memtupcount = 0;
-
-	MemoryContextSwitchTo(oldcontext);
+	reset_buffer_read_write_index(state);
+	
+	// MemoryContextSwitchTo(oldcontext);
 }
 
 
@@ -1403,8 +1408,10 @@ int	tuplesort_merge_order(long allowedMem)
  */
 void tuplesort_rescan(Tuplesortstate *state)
 {
-	
+	reset_buffer_read_write_index(state);
 }
+
+
 void tuplesort_markpos(Tuplesortstate *state)
 {
 	

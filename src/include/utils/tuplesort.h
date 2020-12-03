@@ -64,7 +64,7 @@ extern Tuplesortstate *tupleshufflesort_begin_heap(TupleDesc tupDesc, int workMe
 // lijie: begin
 extern void tupleshufflesort_performshuffle(Tuplesortstate *state);
 
-extern void clear_tupleshufflesort_state(Tuplesortstate* tuplesortstate);
+extern void free_tupleshufflesort_state(Tuplesortstate* tuplesortstate);
 
 extern bool tupleshufflesort_puttupleslot(Tuplesortstate *state, TupleTableSlot *slot);
 

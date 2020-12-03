@@ -22,6 +22,7 @@
 #include "utils/reltrigger.h"
 #include "utils/sortsupport.h"
 #include "utils/tuplestore.h"
+#include "utils/tuplesort.h"
 
 #include "utils/sgdmodel.h"
 
@@ -1654,13 +1655,13 @@ typedef struct SortState
 	bool		sort_Done;		/* sort completed yet? */
 	// bool		bounded_Done;	/* value of bounded we did the sort with */
 	// int64		bound_Done;		/* value of bound we did the sort with */
-	void	   *tuplesortstate; /* private state of tuplesort.c */
+	Tuplesortstate	   *tuplesortstate; /* private state of tuplesort.c */
 
 	bool		shuffle_sort_Done;		/* sort completed yet? */
 	bool		buffer_empty;
 	bool		eof_reach;
 
-	// int 		rescan_count;
+	//int 		rescan_count;
 } SortState;
 
 /* ---------------------

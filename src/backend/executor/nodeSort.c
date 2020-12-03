@@ -21,18 +21,24 @@
 #include "utils/tuplesort.h"
 
 
-static void clear_buffer(Tuplesortstate* tuplesortstate);
-void init_Tuplesortstate(SortState *node);
+static void free_buffer(Tuplesortstate* tuplesortstate);
+static void init_Tuplesortstate(SortState *node);
+static void reset_sort_state(SortState *node);
 
 
-void clear_buffer(Tuplesortstate* tuplesortstate)
+void free_buffer(Tuplesortstate* tuplesortstate)
 {
 	// We may do some other clearing jobs
 	// e.g., need to delete state->memtuples to avoid memory leak
-	clear_tupleshufflesort_state(tuplesortstate);
+	free_tupleshufflesort_state(tuplesortstate);
 
 }
 
+void reset_sort_state(SortState *node) {
+	node->shuffle_sort_Done = false;
+	node->buffer_empty = true;
+	node->eof_reach = false;
+}
 
 void init_Tuplesortstate(SortState *node) {
 	// node denotes the SortState
@@ -45,9 +51,84 @@ void init_Tuplesortstate(SortState *node) {
 	// init buffer
 	// work_mem = 1024 default
 	Tuplesortstate *state = tupleshufflesort_begin_heap(tupDesc, work_mem);
-                                              
-	node->tuplesortstate = (void *) state;
+                                    
+	node->tuplesortstate = state;
 }
+
+
+/* ----------------------------------------------------------------
+ *		ExecInitSort
+ *
+ *		Creates the run-time state information for the sort node
+ *		produced by the planner and initializes its outer subtree.
+ * ----------------------------------------------------------------
+ */
+SortState *
+ExecInitSort(Sort *node, EState *estate, int eflags)
+{
+	SortState  *sortstate;
+
+	// SO1_printf("ExecInitSort: %s\n",
+	// 		   "initializing sort node");
+
+	/*
+	 * create state structure
+	 */
+	sortstate = makeNode(SortState);
+	sortstate->ss.ps.plan = (Plan *) node; // change to node->plan
+	sortstate->ss.ps.state = estate;
+
+	/*
+	 * We must have random access to the sort output to do backward scan or
+	 * mark/restore.  We also prefer to materialize the sort output if we
+	 * might be called on to rewind and replay it many times.
+	 */
+	// sortstate->randomAccess = (eflags & (EXEC_FLAG_REWIND |
+	// 									 EXEC_FLAG_BACKWARD |
+	// 									 EXEC_FLAG_MARK)) != 0;
+	
+	// init_Tuplesortstate(sortstate);
+	
+	
+	/*
+	 * Miscellaneous initialization
+	 *
+	 * Sort nodes don't initialize their ExprContexts because they never call
+	 * ExecQual or ExecProject.
+	 */
+
+	/*
+	 * tuple table initialization
+	 *
+	 * sort nodes only return scan tuples from their sorted relation.
+	 */
+	ExecInitResultTupleSlot(estate, &sortstate->ss.ps);
+	ExecInitScanTupleSlot(estate, &sortstate->ss);
+
+	/*
+	 * initialize child nodes
+	 *
+	 * We shield the child node from the need to support REWIND, BACKWARD, or
+	 * MARK/RESTORE.
+	 */
+	eflags &= ~(EXEC_FLAG_REWIND | EXEC_FLAG_BACKWARD | EXEC_FLAG_MARK);
+
+	outerPlanState(sortstate) = ExecInitNode(outerPlan(node), estate, eflags);
+
+	/*
+	 * initialize tuple type.  no need to initialize projection info because
+	 * this node doesn't do projections.
+	 */
+	ExecAssignResultTypeFromTL(&sortstate->ss.ps);
+	ExecAssignScanTypeFromOuterPlan(&sortstate->ss);
+	sortstate->ss.ps.ps_ProjInfo = NULL;
+
+	SO1_printf("ExecInitSort: %s\n",
+			   "sort node initialized");
+
+	return sortstate;
+}
+
 /* ----------------------------------------------------------------
  *		ExecSort
  *
@@ -67,7 +148,7 @@ ExecSort(SortState *node)
 {
 	EState	   *estate = node->ss.ps.state;
 	ScanDirection dir = estate->es_direction; // going to be set to ShuffleScanDirection
-	Tuplesortstate *state = (Tuplesortstate *) node->tuplesortstate;
+	Tuplesortstate *state = node->tuplesortstate;
 	TupleTableSlot *slot;
 
 	/*
@@ -75,28 +156,21 @@ ExecSort(SortState *node)
 	 * tuplesort.c. Subsequent calls just fetch tuples from tuplesort.
 	 */
 	if (state == NULL) {
+		// build a new tuplesortstate with new buffer
 		init_Tuplesortstate(node);
-
-		node->shuffle_sort_Done = false;
-		node->buffer_empty = true;
-		node->eof_reach = false;
+		// reset the tuplesortstate index, etc.
+		reset_sort_state(node);
 		// node->rescan_count = 0;
-
-		state = (Tuplesortstate *) node->tuplesortstate;
+		state = node->tuplesortstate;
+		
 	}
 
 
 	if (node->buffer_empty) {
 		if (node->eof_reach) {
-			// if (node->rescan_count++ < 1) {
+			// if (node->rescan_count++ < 2) {
 			// 	ExecReScanSort(node);
-			// 	init_Tuplesortstate(node);
-
-			// 	node->shuffle_sort_Done = false;
-			// 	node->buffer_empty = true;
-			// 	node->eof_reach = false;
-
-			// 	state = (Tuplesortstate *) node->tuplesortstate;
+			// 	state = node->tuplesortstate;
 			// }
 			// else
 			// 	return NULL;
@@ -143,6 +217,136 @@ ExecSort(SortState *node)
 
 	return slot;
 }
+
+
+
+/* ----------------------------------------------------------------
+ *		ExecEndSort(node)
+ * ----------------------------------------------------------------
+ */
+void
+ExecEndSort(SortState *node)
+{
+	SO1_printf("ExecEndSort: %s\n",
+			   "shutting down sort node");
+
+	elog(LOG, "begin execendsort.");
+	/*
+	 * clean out the tuple table
+	 */
+	ExecClearTuple(node->ss.ss_ScanTupleSlot);
+	elog(LOG, "end ExecClearTuple ss_ScanTupleSlot.");
+	/* must drop pointer to sort result tuple */
+	ExecClearTuple(node->ss.ps.ps_ResultTupleSlot);
+	elog(LOG, "end ExecClearTuple ps_ResultTupleSlot.");
+
+	free_buffer(node->tuplesortstate);
+	elog(LOG, "end free_buffer.");
+	/*
+	 * Release tuplesort resources
+	 */
+	if (node->tuplesortstate != NULL)
+		tupleshufflesort_end(node->tuplesortstate);
+	// pfree(node->tuplesortstate);
+	elog(LOG, "end tupleshufflesort_end.");
+	/*
+	 * shut down the subplan
+	 */
+	ExecEndNode(outerPlanState(node));
+
+	elog(LOG, "end execendsort.");
+	SO1_printf("ExecEndSort: %s\n",
+			   "sort node shutdown");
+}
+
+/* ----------------------------------------------------------------
+ *		ExecSortMarkPos
+ *
+ *		Calls tuplesort to save the current position in the sorted file.
+ * ----------------------------------------------------------------
+ */
+void
+ExecSortMarkPos(SortState *node)
+{
+	/*
+	 * if we haven't sorted yet, just return
+	 */
+	if (!node->shuffle_sort_Done)
+		return;
+
+	tupleshufflesort_markpos(node->tuplesortstate);
+}
+
+/* ----------------------------------------------------------------
+ *		ExecSortRestrPos
+ *
+ *		Calls tuplesort to restore the last saved sort file position.
+ * ----------------------------------------------------------------
+ */
+void
+ExecSortRestrPos(SortState *node)
+{
+	/*
+	 * if we haven't sorted yet, just return.
+	 */
+	if (!node->shuffle_sort_Done)
+		return;
+
+	/*
+	 * restore the scan to the previously marked position
+	 */
+	tupleshufflesort_restorepos(node->tuplesortstate);
+}
+
+void
+ExecReScanSort(SortState *node)
+{
+	/*
+	 * If we haven't sorted yet, just return. If outerplan's chgParam is not
+	 * NULL then it will be re-scanned by ExecProcNode, else no reason to
+	 * re-scan it at all.
+	 */
+	// if (!node->sort_Done)
+	// 	return;
+
+	/* must drop pointer to sort result tuple */
+	ExecClearTuple(node->ss.ps.ps_ResultTupleSlot);
+	reset_sort_state(node);
+	/*
+	 * If subnode is to be rescanned then we forget previous sort results; we
+	 * have to re-read the subplan and re-sort.  Also must re-sort if the
+	 * bounded-sort parameters changed or we didn't select randomAccess.
+	 *
+	 * Otherwise we can just rewind and rescan the sorted output.
+	 */
+	if (node->ss.ps.lefttree->chgParam != NULL)
+	{
+		node->shuffle_sort_Done = false;
+		tupleshufflesort_end(node->tuplesortstate);
+		node->tuplesortstate = NULL;
+
+		/*
+		 * if chgParam of subnode is not null then plan will be re-scanned by
+		 * first ExecProcNode.
+		 */
+		if (node->ss.ps.lefttree->chgParam == NULL)
+			ExecReScan(node->ss.ps.lefttree);
+	}
+
+	// we just clear the buffer and rescan lefttree (shufflescan)
+	else {
+		// node->tuplesortstate->rescaned = true;
+		tupleshufflesort_rescan(node->tuplesortstate);
+		if (node->ss.ps.lefttree != NULL)
+			ExecReScan(node->ss.ps.lefttree);
+
+	}
+
+	
+	
+}
+
+
 
 // can compile
 // TupleTableSlot *
@@ -327,189 +531,3 @@ ExecSort(SortState *node)
 
 // 	return slot;
 // }
-
-/* ----------------------------------------------------------------
- *		ExecInitSort
- *
- *		Creates the run-time state information for the sort node
- *		produced by the planner and initializes its outer subtree.
- * ----------------------------------------------------------------
- */
-SortState *
-ExecInitSort(Sort *node, EState *estate, int eflags)
-{
-	SortState  *sortstate;
-
-	// SO1_printf("ExecInitSort: %s\n",
-	// 		   "initializing sort node");
-
-	/*
-	 * create state structure
-	 */
-	sortstate = makeNode(SortState);
-	sortstate->ss.ps.plan = (Plan *) node; // change to node->plan
-	sortstate->ss.ps.state = estate;
-
-	/*
-	 * We must have random access to the sort output to do backward scan or
-	 * mark/restore.  We also prefer to materialize the sort output if we
-	 * might be called on to rewind and replay it many times.
-	 */
-	// sortstate->randomAccess = (eflags & (EXEC_FLAG_REWIND |
-	// 									 EXEC_FLAG_BACKWARD |
-	// 									 EXEC_FLAG_MARK)) != 0;
-	
-	// init_Tuplesortstate(sortstate);
-	
-	
-	/*
-	 * Miscellaneous initialization
-	 *
-	 * Sort nodes don't initialize their ExprContexts because they never call
-	 * ExecQual or ExecProject.
-	 */
-
-	/*
-	 * tuple table initialization
-	 *
-	 * sort nodes only return scan tuples from their sorted relation.
-	 */
-	ExecInitResultTupleSlot(estate, &sortstate->ss.ps);
-	ExecInitScanTupleSlot(estate, &sortstate->ss);
-
-	/*
-	 * initialize child nodes
-	 *
-	 * We shield the child node from the need to support REWIND, BACKWARD, or
-	 * MARK/RESTORE.
-	 */
-	eflags &= ~(EXEC_FLAG_REWIND | EXEC_FLAG_BACKWARD | EXEC_FLAG_MARK);
-
-	outerPlanState(sortstate) = ExecInitNode(outerPlan(node), estate, eflags);
-
-	/*
-	 * initialize tuple type.  no need to initialize projection info because
-	 * this node doesn't do projections.
-	 */
-	ExecAssignResultTypeFromTL(&sortstate->ss.ps);
-	ExecAssignScanTypeFromOuterPlan(&sortstate->ss);
-	sortstate->ss.ps.ps_ProjInfo = NULL;
-
-	SO1_printf("ExecInitSort: %s\n",
-			   "sort node initialized");
-
-	return sortstate;
-}
-
-/* ----------------------------------------------------------------
- *		ExecEndSort(node)
- * ----------------------------------------------------------------
- */
-void
-ExecEndSort(SortState *node)
-{
-	SO1_printf("ExecEndSort: %s\n",
-			   "shutting down sort node");
-
-	/*
-	 * clean out the tuple table
-	 */
-	ExecClearTuple(node->ss.ss_ScanTupleSlot);
-	/* must drop pointer to sort result tuple */
-	ExecClearTuple(node->ss.ps.ps_ResultTupleSlot);
-
-	clear_buffer(node->tuplesortstate);
-	/*
-	 * Release tuplesort resources
-	 */
-	if (node->tuplesortstate != NULL)
-		tupleshufflesort_end((Tuplesortstate *) node->tuplesortstate);
-	// pfree(node->tuplesortstate);
-
-	/*
-	 * shut down the subplan
-	 */
-	ExecEndNode(outerPlanState(node));
-
-	SO1_printf("ExecEndSort: %s\n",
-			   "sort node shutdown");
-}
-
-/* ----------------------------------------------------------------
- *		ExecSortMarkPos
- *
- *		Calls tuplesort to save the current position in the sorted file.
- * ----------------------------------------------------------------
- */
-void
-ExecSortMarkPos(SortState *node)
-{
-	/*
-	 * if we haven't sorted yet, just return
-	 */
-	if (!node->shuffle_sort_Done)
-		return;
-
-	tupleshufflesort_markpos((Tuplesortstate *) node->tuplesortstate);
-}
-
-/* ----------------------------------------------------------------
- *		ExecSortRestrPos
- *
- *		Calls tuplesort to restore the last saved sort file position.
- * ----------------------------------------------------------------
- */
-void
-ExecSortRestrPos(SortState *node)
-{
-	/*
-	 * if we haven't sorted yet, just return.
-	 */
-	if (!node->shuffle_sort_Done)
-		return;
-
-	/*
-	 * restore the scan to the previously marked position
-	 */
-	tupleshufflesort_restorepos((Tuplesortstate *) node->tuplesortstate);
-}
-
-void
-ExecReScanSort(SortState *node)
-{
-	/*
-	 * If we haven't sorted yet, just return. If outerplan's chgParam is not
-	 * NULL then it will be re-scanned by ExecProcNode, else no reason to
-	 * re-scan it at all.
-	 */
-	// if (!node->sort_Done)
-	// 	return;
-
-	/* must drop pointer to sort result tuple */
-	ExecClearTuple(node->ss.ps.ps_ResultTupleSlot);
-
-	/*
-	 * If subnode is to be rescanned then we forget previous sort results; we
-	 * have to re-read the subplan and re-sort.  Also must re-sort if the
-	 * bounded-sort parameters changed or we didn't select randomAccess.
-	 *
-	 * Otherwise we can just rewind and rescan the sorted output.
-	 */
-	//if (node->ss.ps.lefttree->chgParam != NULL)
-	if (node->ss.ps.lefttree != NULL)
-	{
-		node->shuffle_sort_Done = false;
-		tupleshufflesort_end((Tuplesortstate *) node->tuplesortstate);
-		node->tuplesortstate = NULL;
-
-		/*
-		 * if chgParam of subnode is not null then plan will be re-scanned by
-		 * first ExecProcNode.
-		 */
-		//if (node->ss.ps.lefttree->chgParam == NULL)
-		ExecReScan(node->ss.ps.lefttree);
-	}
-	else
-		tupleshufflesort_rescan((Tuplesortstate *) node->tuplesortstate);
-
-}

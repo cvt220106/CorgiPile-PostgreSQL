@@ -1038,7 +1038,7 @@ tupleshufflesort_gettupleslot(Tuplesortstate *state, TupleTableSlot *slot)
 {
 	MemoryContext oldcontext = MemoryContextSwitchTo(state->shufflesortcontext);
 	SortTuple	stup;
-	bool should_free = false;
+	bool should_free = true;
 
 	bool tuple_left = tupleshufflesort_gettuple_common(state, &stup);
 	
@@ -1212,6 +1212,30 @@ tupleshufflesort_getheaptuple(Tuplesortstate *state, bool forward, bool *should_
 // 	pfree(stup->tuple);
 // }
 
+
+void
+copytup_heap_original(Tuplesortstate *state, SortTuple *stup, void *tup)
+{
+	/*
+	 * We expect the passed "tup" to be a TupleTableSlot, and form a
+	 * MinimalTuple using the exported interface for that.
+	 */
+	TupleTableSlot *slot = (TupleTableSlot *) tup;
+	MinimalTuple tuple;
+	// HeapTupleData htup;
+
+	/* copy the tuple into sort storage */
+	tuple = ExecCopySlotMinimalTuple(slot);
+	stup->tuple = (void *) tuple;
+	USEMEM(state, GetMemoryChunkSpace(tuple));
+	// /* set up first-column key value */
+	// htup.t_len = tuple->t_len + MINIMAL_TUPLE_OFFSET;
+	// htup.t_data = (HeapTupleHeader) ((char *) tuple - MINIMAL_TUPLE_OFFSET);
+	// stup->datum1 = heap_getattr(&htup,
+	// 							state->sortKeys[0].ssup_attno,
+	// 							state->tupDesc,
+	// 							&stup->isnull1);
+}
 
 void
 copytup_heap(Tuplesortstate *state, SortTuple *stup, void *tup)

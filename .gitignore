@@ -1,4 +1,7 @@
 # Global excludes across all subdirectories
+*.DS_STORE
+.DS_STORE
+.DS_Store
 *.o
 *.so
 *.so.[0-9]

@@ -1658,8 +1658,12 @@ typedef struct SortState
 	Tuplesortstate	   *tuplesortstate; /* private state of tuplesort.c */
 
 	bool		shuffle_sort_Done;		/* sort completed yet? */
-	bool		buffer_empty;
 	bool		eof_reach;
+
+	bool write_thread_not_started;
+	bool buffer_full_signal;
+	bool swap_finished_signal;
+
 
 	//int 		rescan_count;
 } SortState;

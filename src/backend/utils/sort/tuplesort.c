@@ -161,6 +161,7 @@ double set_buffer_block_num = DEFAULT_BUFFER_BLOCK_NUM;
 typedef struct
 {
 	void	   *tuple;			/* the tuple proper */
+	// can be changed to feature/label Datum
 	Datum		datum1;			/* value of first key column */
 	bool		isnull1;		/* is first key column NULL? */
 	int			tupindex;		/* see notes above */
@@ -273,10 +274,19 @@ struct Tuplesortstate
 	 * never in the heap and are used to hold pre-read tuples.)  In state
 	 * SORTEDONTAPE, the array is not used.
 	 */
-	SortTuple  *memtuples;		/* array of ShuffleSortTuple structs */
+	SortTuple  *memtuples_buffer_1;		/* array of ShuffleSortTuple structs */
+	SortTuple  *memtuples_buffer_2;		/* array of ShuffleSortTuple structs */
+
+
+	SortTuple	*write_buffer;
+	SortTuple	*read_buffer;
+
+
 	int			memtupcount;	/* number of tuples currently present */
 	int			memtupsize;		/* allocated length of memtuples array */
 
+	int			put_index;
+	int			fetch_index;	
 	/*
 	 * While building initial runs, this is the current output run number
 	 * (starting at 0).  Afterwards, it is the number of initial runs we made.
@@ -330,7 +340,7 @@ struct Tuplesortstate
 	 * position is also critical state.)
 	 */
 	// int			result_tape;	/* actual tape number of finished output */
-	int			fetchindex;		/* array index (only used if SORTEDINMEM) */
+	// int			fetchindex;		/* array index (only used if SORTEDINMEM) */
 	bool		eof_reached;	/* reached EOF (needed for cursors) */
 
 	/* markpos_xxx holds marked position for mark and restore */
@@ -441,6 +451,14 @@ struct Tuplesortstate
 
 
 static void copytup_heap(Tuplesortstate *state, SortTuple *stup, void *tup);
+static void shuffle_tuple(SortTuple *a, size_t n);
+static bool puttuple_into_buffer(Tuplesortstate *state, SortTuple *tuple);
+static Tuplesortstate * tupleshufflesort_begin_common(int workMem);
+static void tupleshufflesort_gettuple_common(Tuplesortstate *state, SortTuple *stup);
+static void copytup_heap_original(Tuplesortstate *state, SortTuple *stup, void *tup);
+
+
+
 // static void shuffle_tuple(SortTuple *a, size_t n);
 // static void clear_tupleshufflesort_state(Tuplesortstate* tuplesortstate);
 // bool is_shuffle_buffer_emtpy(Tuplesortstate *state);
@@ -474,7 +492,8 @@ static void copytup_heap(Tuplesortstate *state, SortTuple *stup, void *tup);
 
 // Lijie: add begin
 // shuffle_tuple(state->memtuples, state->memtupcount, state);
-static void
+
+void
 shuffle_tuple(SortTuple *a, size_t n)
 {
 	srand(time(0) + rand());
@@ -494,9 +513,14 @@ shuffle_tuple(SortTuple *a, size_t n)
 void 
 free_tupleshufflesort_state(Tuplesortstate* tuplesortstate)
 {
-	tuplesortstate->memtupcount = 0;
-	FREEMEM(tuplesortstate, GetMemoryChunkSpace(tuplesortstate->memtuples));
-	pfree(tuplesortstate->memtuples);
+	MemoryContext oldcontext = MemoryContextSwitchTo(tuplesortstate->shufflesortcontext);
+	// tuplesortstate->memtupcount = 0;
+	FREEMEM(tuplesortstate, GetMemoryChunkSpace(tuplesortstate->memtuples_buffer_1));
+	FREEMEM(tuplesortstate, GetMemoryChunkSpace(tuplesortstate->memtuples_buffer_2));
+	pfree(tuplesortstate->memtuples_buffer_1);
+	pfree(tuplesortstate->memtuples_buffer_2);
+
+	MemoryContextSwitchTo(oldcontext);
 	// pfree(tuplesortstate);
 }
 
@@ -540,22 +564,39 @@ compute_loss_and_update_model(TupleShuffleSortState* state, Model* model,
 
 // Lijie: add end
 */
-
+/*
 bool 
 is_shuffle_buffer_emtpy(Tuplesortstate *state) {
 	return state->memtupcount == 0;
 }
+*/
 
-static bool
+
+
+
+bool
 puttuple_into_buffer(Tuplesortstate *state, SortTuple *tuple) {
-	Assert(state->memtupcount < state->memtupsize);
-	state->memtuples[state->memtupcount++] = *tuple; // there is a copy
-	bool buffer_full = false;
+	// Assert(state->memtupcount < state->memtupsize);
+	bool write_buffer_full = false;
+	// TODO: there is a copy
+	if (tuple != NULL) {
+		state->write_buffer[state->put_index++] = *tuple; 
+	}
+	else {
+		// create a null SortTuple and insert it into the buffer
+		SortTuple null_sorttuple;
+		null_sorttuple.tuple = NULL;
+		state->write_buffer[state->put_index++] = null_sorttuple; 
+	}
 
-	if (state->memtupcount == state->memtupsize)
-		buffer_full = true;
+	++state->memtupcount;
 
-	return buffer_full;
+	if (state->put_index == state->memtupsize) {
+		write_buffer_full = true;
+		state->put_index = 0;
+	}
+		
+	return write_buffer_full;
 }
 
 // void
@@ -609,9 +650,13 @@ puttuple_into_buffer(TupleShuffleSortState *state, ShuffleSortTuple *tuple, bool
  */
 // #include "qsort_tuple.c"
 
-static void reset_buffer_read_write_index(Tuplesortstate *state) {
-	state->memtupcount = 0; // how many tuples are stored in the buffer right now
-	state->fetchindex = 0;
+void tupleshufflesort_reset_state(Tuplesortstate *state) {
+	state->memtupcount = 0; // how many tuples are stored in the write_buffer right now
+	state->fetch_index = 0;
+	state->put_index = 0;
+
+    state->write_buffer = state->memtuples_buffer_1;
+	state->read_buffer = NULL;
 
 	// Are not used
 	state->markpos_offset = 0;
@@ -619,6 +664,22 @@ static void reset_buffer_read_write_index(Tuplesortstate *state) {
 	state->eof_reached = false;
 }
 
+
+bool tupleshufflesort_is_read_buffer_null(Tuplesortstate *state) {
+	return state->read_buffer == NULL;
+}
+
+
+void tupleshufflesort_init_buffer(Tuplesortstate *state) {
+	state->write_buffer = state->memtuples_buffer_2;
+    state->read_buffer = state->memtuples_buffer_1;
+}
+
+bool tupleshufflesort_has_tuple_in_buffer(Tuplesortstate *state) {
+	//TODO: change to state->fetch_index < state->memtupcount;
+	elog(INFO, "[Read thread] fetch_index = %d, memtupsize = %d", state->fetch_index, state->memtupsize);
+	return state->fetch_index < state->memtupsize;
+}
 /*
  *		tuplesort_begin_xxx
  *
@@ -638,7 +699,7 @@ static void reset_buffer_read_write_index(Tuplesortstate *state) {
  * whether the caller needs non-sequential access to the sort result.
  */
 
-static Tuplesortstate *
+Tuplesortstate *
 tupleshufflesort_begin_common(int workMem)
 {
 	Tuplesortstate *state;
@@ -679,8 +740,6 @@ tupleshufflesort_begin_common(int workMem)
 	state->shufflesortcontext = shufflesortcontext;
 	// state->tapeset = NULL;
 
-	reset_buffer_read_write_index(state);
-
 	
 
 	/*
@@ -699,9 +758,13 @@ tupleshufflesort_begin_common(int workMem)
 
 	state->memtupsize = set_buffer_tuple_num;
 
-	state->memtuples = (SortTuple *) palloc(state->memtupsize * sizeof(SortTuple));
+	state->memtuples_buffer_1 = (SortTuple *) palloc(state->memtupsize * sizeof(SortTuple));
+	state->memtuples_buffer_2 = (SortTuple *) palloc(state->memtupsize * sizeof(SortTuple));
 
-	USEMEM(state, GetMemoryChunkSpace(state->memtuples));
+	USEMEM(state, GetMemoryChunkSpace(state->memtuples_buffer_1));
+	USEMEM(state, GetMemoryChunkSpace(state->memtuples_buffer_2));
+
+	// tupleshufflesort_reset_state(state);
 
 	/* workMem must be large enough for the minimal memtuples array */
 	if (LACKMEM(state))
@@ -726,10 +789,10 @@ Tuplesortstate *
 tupleshufflesort_begin_heap(TupleDesc tupDesc, int workMem)
 {
 	Tuplesortstate *state = tupleshufflesort_begin_common(workMem);
-	MemoryContext oldcontext;
+	//MemoryContext oldcontext;
 	// int			i;
 
-	oldcontext = MemoryContextSwitchTo(state->shufflesortcontext);
+	//oldcontext = MemoryContextSwitchTo(state->shufflesortcontext);
 
 	// AssertArg(nkeys > 0);
 
@@ -761,7 +824,7 @@ tupleshufflesort_begin_heap(TupleDesc tupDesc, int workMem)
 	if (nkeys == 1)
 		state->onlyKey = state->sortKeys;
 	*/
-	MemoryContextSwitchTo(oldcontext);
+	//MemoryContextSwitchTo(oldcontext);
 	return state;
 }
 /*
@@ -826,6 +889,17 @@ tupleshufflesort_end(Tuplesortstate *state)
 	 */
 	MemoryContextDelete(state->shufflesortcontext);
 }
+
+
+void tupleshufflesort_swapbuffer(Tuplesortstate *state) {
+	SortTuple *temp = state->write_buffer;
+	state->write_buffer = state->read_buffer;
+	state->read_buffer = temp;
+
+	state->fetch_index = 0;
+}
+
+
 /*
  * Lijie: add begin
  * 
@@ -842,15 +916,24 @@ tupleshufflesort_puttupleslot(Tuplesortstate *state, TupleTableSlot *slot)
 	// }
 	MemoryContext oldcontext = MemoryContextSwitchTo(state->shufflesortcontext);
 	SortTuple	stup;
-	/*
-	 * Copy the given tuple into memory we control, and decrease availMem.
-	 * Then call the common code.
-	 */
-	COPYTUP(state, &stup, (void *) slot); // HeapTuple slot => MinimalTuple stup
-	bool buffer_full = puttuple_into_buffer(state, &stup);
+	bool write_buffer_full = false;
+
+	if (!TupIsNull(slot)) {
+		/*
+		* Copy the given tuple into memory we control, and decrease availMem.
+		* Then call the common code.
+		*/
+		COPYTUP(state, &stup, (void *) slot); // HeapTuple slot => MinimalTuple stup
+		write_buffer_full = puttuple_into_buffer(state, &stup);
+	}
+
+	else {
+		write_buffer_full = puttuple_into_buffer(state, NULL);
+	}
+	
 	MemoryContextSwitchTo(oldcontext);
 	
-	return buffer_full;
+	return write_buffer_full;
 }
 // Lijie: add end
 /*
@@ -922,12 +1005,27 @@ tupleshufflesort_puttupleslot(Tuplesortstate *state, TupleTableSlot *slot)
 void
 tupleshufflesort_performshuffle(Tuplesortstate *state) 
 {
+	// TODO: can remove the context switch
+	MemoryContext oldcontext = MemoryContextSwitchTo(state->shufflesortcontext);
+
+	elog(INFO, "[Write thread] perform_shuffle: state->memtupcount = %d", state->memtupcount);
+	if (state->memtupcount > 1) {
+		shuffle_tuple(state->write_buffer, state->memtupcount);
+	}
+	MemoryContextSwitchTo(oldcontext);
+}
+
+/*
+void
+tupleshufflesort_performshuffle(Tuplesortstate *state) 
+{
 	MemoryContext oldcontext = MemoryContextSwitchTo(state->shufflesortcontext);
 	if (state->memtupcount > 1) {
 		shuffle_tuple(state->memtuples, state->memtupcount);
 	}
 	MemoryContextSwitchTo(oldcontext);
 }
+*/
 /*
 void
 tupleshufflesort_performshuffle(TupleShuffleSortState *state)
@@ -982,6 +1080,13 @@ tupleshufflesort_performshuffle(TupleShuffleSortState *state)
  * direction into *stup.  Returns FALSE if no more tuples.
  * If *should_free is set, the caller must pfree stup.tuple when done with it.
  */
+void
+tupleshufflesort_gettuple_common(Tuplesortstate *state, SortTuple *stup)
+{
+	*stup = state->read_buffer[state->fetch_index++];
+}
+
+/*
 static bool
 tupleshufflesort_gettuple_common(Tuplesortstate *state, SortTuple *stup)
 {
@@ -999,6 +1104,7 @@ tupleshufflesort_gettuple_common(Tuplesortstate *state, SortTuple *stup)
 	}
 	return tuple_left;
 }
+*/
 	
 /*
 static bool
@@ -1033,6 +1139,7 @@ tupleshufflesort_gettuple_common(TupleShuffleSortState *state, ShuffleSortTuple 
  * If successful, put tuple in slot and return TRUE; else, clear the slot
  * and return FALSE.
  */
+/*
 bool
 tupleshufflesort_gettupleslot(Tuplesortstate *state, TupleTableSlot *slot)
 {
@@ -1054,6 +1161,55 @@ tupleshufflesort_gettupleslot(Tuplesortstate *state, TupleTableSlot *slot)
 		return false;
 	}
 }
+*/
+
+/*
+bool
+tupleshufflesort_gettupleslot(Tuplesortstate *state, TupleTableSlot *slot)
+{
+	MemoryContext oldcontext = MemoryContextSwitchTo(state->shufflesortcontext);
+	SortTuple	stup;
+	bool should_free = true;
+
+	bool tuple_left = tupleshufflesort_gettuple_common(state, &stup);
+	
+	MemoryContextSwitchTo(oldcontext);
+	if (stup.tuple)
+	{
+		ExecStoreMinimalTuple((MinimalTuple) stup.tuple, slot, should_free);
+		return tuple_left;
+	}
+	else
+	{
+		ExecClearTuple(slot);
+		return false;
+	}
+}
+*/
+
+void
+tupleshufflesort_gettupleslot(Tuplesortstate *state, TupleTableSlot *slot)
+{
+	MemoryContext oldcontext = MemoryContextSwitchTo(state->shufflesortcontext);
+	SortTuple	stup;
+	bool should_free = true;
+
+	tupleshufflesort_gettuple_common(state, &stup);
+
+	if (stup.tuple)
+	{
+		ExecStoreMinimalTuple((MinimalTuple) stup.tuple, slot, should_free);
+	}
+	else
+	{
+		elog(INFO, "To clear the slot with ExecClearTuple(slot)");
+		ExecClearTuple(slot);
+	}
+
+	MemoryContextSwitchTo(oldcontext);
+}
+
+
 /*
 bool
 tupleshufflesort_gettupleslot(Tuplesortstate *state, 
@@ -1112,6 +1268,7 @@ tupleshufflesort_gettupleslot(TupleShuffleSortState *state, bool forward,
  * Returns NULL if no more tuples.  If *should_free is set, the
  * caller must pfree the returned tuple when done with it.
  */
+/*
 HeapTuple
 tupleshufflesort_getheaptuple(Tuplesortstate *state, bool forward, bool *should_free)
 {
@@ -1122,6 +1279,7 @@ tupleshufflesort_getheaptuple(Tuplesortstate *state, bool forward, bool *should_
 	MemoryContextSwitchTo(oldcontext);
 	return stup.tuple;
 }
+*/
 /*
  * tuplesort_get_stats - extract summary statistics
  *
@@ -1252,6 +1410,9 @@ copytup_heap(Tuplesortstate *state, SortTuple *stup, void *tup)
 	tuple = ExecCopySlotMinimalTuple(slot);
 	stup->tuple = (void *) tuple;
 	USEMEM(state, GetMemoryChunkSpace(tuple));
+
+
+
 	// /* set up first-column key value */
 	// htup.t_len = tuple->t_len + MINIMAL_TUPLE_OFFSET;
 	// htup.t_data = (HeapTupleHeader) ((char *) tuple - MINIMAL_TUPLE_OFFSET);
@@ -1272,7 +1433,7 @@ tupleshufflesort_markpos(Tuplesortstate *state)
 	// Assert(state->randomAccess);
 
 	
-	state->markpos_offset = state->fetchindex;
+	state->markpos_offset = state->fetch_index;
 	state->markpos_eof = state->eof_reached;
 
 	MemoryContextSwitchTo(oldcontext);
@@ -1288,7 +1449,7 @@ tupleshufflesort_restorepos(Tuplesortstate *state)
 	MemoryContext oldcontext = MemoryContextSwitchTo(state->shufflesortcontext);
 
 	// Assert(state->randomAccess);
-	state->fetchindex = state->markpos_offset;
+	state->fetch_index = state->markpos_offset;
 	state->eof_reached = state->markpos_eof;
 	
 	MemoryContextSwitchTo(oldcontext);
@@ -1299,7 +1460,7 @@ tupleshufflesort_rescan(Tuplesortstate *state)
 {
 	//MemoryContext oldcontext = MemoryContextSwitchTo(state->shufflesortcontext);
 
-	reset_buffer_read_write_index(state);
+	tupleshufflesort_reset_state(state);
 	
 	// MemoryContextSwitchTo(oldcontext);
 }
@@ -1432,7 +1593,7 @@ int	tuplesort_merge_order(long allowedMem)
  */
 void tuplesort_rescan(Tuplesortstate *state)
 {
-	reset_buffer_read_write_index(state);
+	tupleshufflesort_reset_state(state);
 }
 
 

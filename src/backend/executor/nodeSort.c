@@ -19,12 +19,62 @@
 #include "executor/nodeSort.h"
 #include "miscadmin.h"
 #include "utils/tuplesort.h"
-
+#include "pthread.h"
 
 static void free_buffer(Tuplesortstate* tuplesortstate);
 static void init_Tuplesortstate(SortState *node);
 static void reset_sort_state(SortState *node);
+static void wait_buffer_full(SortState *node);
+static void signal_buffer_full(SortState *node);
+static void wait_swap_finished(SortState *node);
+static void signal_swap_finished(SortState *node);
+static void* write_thread_run(SortState *node);
+static void start_write_thread(SortState *node);
 
+pthread_t write_thread;
+
+pthread_mutex_t buffer_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t swap_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t buffer_full_cond = PTHREAD_COND_INITIALIZER;
+pthread_cond_t swap_finished_cond = PTHREAD_COND_INITIALIZER;
+
+
+void wait_buffer_full(SortState *node) {
+    pthread_mutex_lock(&buffer_mutex);
+    while (!node->buffer_full_signal) {
+        //printf("\n[read thread] wait_buffer_full()\n");
+        pthread_cond_wait(&buffer_full_cond, &buffer_mutex);
+    }
+    node->buffer_full_signal = false;
+    pthread_mutex_unlock(&buffer_mutex);
+}
+
+void signal_buffer_full(SortState *node) {
+    pthread_mutex_lock(&buffer_mutex);
+    node->buffer_full_signal = true;
+    //printf("\n[write thread] signal_buffer_full()\n");
+    pthread_cond_signal(&buffer_full_cond);
+    pthread_mutex_unlock(&buffer_mutex);
+}
+
+void wait_swap_finished(SortState *node) {
+    
+    pthread_mutex_lock(&swap_mutex);
+    while (!node->swap_finished_signal) {
+        //printf("\n[write thread] wait_swap_finished()\n");
+        pthread_cond_wait(&swap_finished_cond, &swap_mutex);
+    }
+    node->swap_finished_signal = false;
+    pthread_mutex_unlock(&swap_mutex);
+}
+
+void signal_swap_finished(SortState *node) {
+    pthread_mutex_lock(&swap_mutex);
+    node->swap_finished_signal = true;
+    //printf("\n[read thread] signal_swap_finished()\n");
+    pthread_cond_signal(&swap_finished_cond);
+    pthread_mutex_unlock(&swap_mutex);
+}
 
 void free_buffer(Tuplesortstate* tuplesortstate)
 {
@@ -35,9 +85,19 @@ void free_buffer(Tuplesortstate* tuplesortstate)
 }
 
 void reset_sort_state(SortState *node) {
+
+	// The node state (SortState) cares about the thread-related state,
+	// while tupleshufflesort state cares about the buffer-related state.
 	node->shuffle_sort_Done = false;
-	node->buffer_empty = true;
 	node->eof_reach = false;
+
+	// for double buffer
+	node->write_thread_not_started = true;
+	node->buffer_full_signal = false;
+    node->swap_finished_signal = false;
+
+	tupleshufflesort_reset_state(node->tuplesortstate);
+
 }
 
 void init_Tuplesortstate(SortState *node) {
@@ -129,6 +189,43 @@ ExecInitSort(Sort *node, EState *estate, int eflags)
 	return sortstate;
 }
 
+/** 
+ * =====================  Write thread ===================== 
+ */
+
+void start_write_thread(SortState *node) {
+    pthread_create(&write_thread, NULL, (void *)write_thread_run, node);
+}
+
+void* write_thread_run(SortState *node) {
+
+	PlanState  *outerNode = outerPlanState(node);
+	Tuplesortstate* state = node->tuplesortstate;
+
+    while(true) {
+        TupleTableSlot* tuple_slot = ExecProcNode(outerNode);
+       
+        // still put the tuple into the buffer when tuple == null
+        bool write_buffer_full = tupleshufflesort_puttupleslot(state, tuple_slot);
+
+        if (write_buffer_full || TupIsNull(tuple_slot)) {
+			elog(INFO, "[Write thread] write_buffer_full = %d,tuple_slot == null? %d", write_buffer_full, TupIsNull(tuple_slot));
+            tupleshufflesort_performshuffle(state); // the last tuple can be null
+            elog(INFO, "[Write thread] Finish tupleshufflesort_performshuffle(state);");
+			signal_buffer_full(node);
+			elog(INFO, "[Write thread] Finish signal_buffer_full(node);");
+            if (!TupIsNull(tuple_slot))
+                wait_swap_finished(node);
+           
+        }
+
+        if (TupIsNull(tuple_slot))
+            break;
+    }
+
+    return NULL;
+}
+
 /* ----------------------------------------------------------------
  *		ExecSort
  *
@@ -143,6 +240,7 @@ ExecInitSort(Sort *node, EState *estate, int eflags)
  *		  -- the outer child is prepared to return the first tuple.
  * ----------------------------------------------------------------
  */
+/*
 TupleTableSlot *
 ExecSort(SortState *node)
 {
@@ -151,10 +249,6 @@ ExecSort(SortState *node)
 	Tuplesortstate *state = node->tuplesortstate;
 	TupleTableSlot *slot;
 
-	/*
-	 * If first time through, read all tuples from outer plan and pass them to
-	 * tuplesort.c. Subsequent calls just fetch tuples from tuplesort.
-	 */
 	if (state == NULL) {
 		// build a new tuplesortstate with new buffer
 		init_Tuplesortstate(node);
@@ -217,7 +311,78 @@ ExecSort(SortState *node)
 
 	return slot;
 }
+*/
 
+TupleTableSlot *
+ExecSort(SortState *node)
+{
+	// EState	   *estate = node->ss.ps.state;
+	// ScanDirection dir = estate->es_direction; // going to be set to ShuffleScanDirection
+	Tuplesortstate *state = node->tuplesortstate;
+	TupleTableSlot *slot;
+
+	/*
+	 * If first time through, read all tuples from outer plan and pass them to
+	 * tuplesort.c. Subsequent calls just fetch tuples from tuplesort.
+	 */
+	if (state == NULL) {
+		// build a new tuplesortstate with new buffer
+		init_Tuplesortstate(node);
+		// reset the tuplesortstate index, etc.
+		reset_sort_state(node);
+		// node->rescan_count = 0;
+		state = node->tuplesortstate;
+		
+	}
+
+	if (node->write_thread_not_started) {
+        start_write_thread(node);
+        node->write_thread_not_started = false;
+    }
+
+	// if read_buffer == NULL
+	if (tupleshufflesort_is_read_buffer_null(state)) {     
+        wait_buffer_full(node);
+        
+		// write_buffer = buffer2;
+        // read_buffer = buffer1;
+		tupleshufflesort_init_buffer(state);
+        signal_swap_finished(node);
+    }
+
+
+	slot = node->ss.ps.ps_ResultTupleSlot;
+
+	/*
+	if (fetch_index < buffer_size) {
+        int tuple = read_buffer[fetch_index++];
+        // tuple can be null
+        return tuple;
+    }
+	*/
+	if (tupleshufflesort_has_tuple_in_buffer(state)) {
+		// slot can be null
+		elog(INFO, "[Read thread] Finish tupleshufflesort_has_tuple_in_buffer(state);");
+		tupleshufflesort_gettupleslot(state, slot);
+		elog(INFO, "[Read thread] tupleshufflesort_gettupleslot(state, slot); when read_buffer = null");
+		// slot can be empty, so TupleIsNull(slot) == true
+		return slot;
+	}
+	
+    else {
+		elog(INFO, "[Read thread] Begin wait_buffer_full(node);");
+        wait_buffer_full(node);
+		// swap(&read_buffer, &write_buffer) and reset fetch_index = 0;
+		tupleshufflesort_swapbuffer(state);
+        signal_swap_finished(node);
+
+		elog(INFO, "[Read thread] Begin tupleshufflesort_gettupleslot(state, slot) when read_buffer != null;");
+        tupleshufflesort_gettupleslot(state, slot);
+		elog(INFO, "[Read thread] Finish tupleshufflesort_gettupleslot(state, slot) when read_buffer != null;");
+        return slot;
+    }  
+	
+}
 
 
 /* ----------------------------------------------------------------
@@ -229,34 +394,37 @@ ExecEndSort(SortState *node)
 {
 	SO1_printf("ExecEndSort: %s\n",
 			   "shutting down sort node");
-
-	elog(LOG, "begin execendsort.");
 	/*
 	 * clean out the tuple table
 	 */
 	ExecClearTuple(node->ss.ss_ScanTupleSlot);
-	elog(LOG, "end ExecClearTuple ss_ScanTupleSlot.");
+	//elog(LOG, "end ExecClearTuple ss_ScanTupleSlot.");
 	/* must drop pointer to sort result tuple */
 	ExecClearTuple(node->ss.ps.ps_ResultTupleSlot);
-	elog(LOG, "end ExecClearTuple ps_ResultTupleSlot.");
+	//elog(LOG, "end ExecClearTuple ps_ResultTupleSlot.");
 
 	free_buffer(node->tuplesortstate);
-	elog(LOG, "end free_buffer.");
+	//elog(LOG, "end free_buffer.");
 	/*
 	 * Release tuplesort resources
 	 */
 	if (node->tuplesortstate != NULL)
 		tupleshufflesort_end(node->tuplesortstate);
 	// pfree(node->tuplesortstate);
-	elog(LOG, "end tupleshufflesort_end.");
+	// elog(LOG, "end tupleshufflesort_end.");
 	/*
 	 * shut down the subplan
 	 */
 	ExecEndNode(outerPlanState(node));
 
-	elog(LOG, "end execendsort.");
+	// elog(LOG, "end execendsort.");
 	SO1_printf("ExecEndSort: %s\n",
 			   "sort node shutdown");
+
+	pthread_mutex_destroy(&buffer_mutex);
+    pthread_mutex_destroy(&swap_mutex);
+    pthread_cond_destroy(&buffer_full_cond);
+    pthread_cond_destroy(&swap_finished_cond);
 }
 
 /* ----------------------------------------------------------------
@@ -336,7 +504,7 @@ ExecReScanSort(SortState *node)
 	// we just clear the buffer and rescan lefttree (shufflescan)
 	else {
 		// node->tuplesortstate->rescaned = true;
-		tupleshufflesort_rescan(node->tuplesortstate);
+		// tupleshufflesort_rescan(node->tuplesortstate);
 		if (node->ss.ps.lefttree != NULL)
 			ExecReScan(node->ss.ps.lefttree);
 

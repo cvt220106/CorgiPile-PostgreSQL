@@ -72,7 +72,7 @@ extern bool is_shuffle_buffer_emtpy(Tuplesortstate *state);
 
 // lijie: end
 
-extern bool tupleshufflesort_gettupleslot(Tuplesortstate *state, 
+extern void tupleshufflesort_gettupleslot(Tuplesortstate *state, 
 					   TupleTableSlot *slot);
 
 extern void tupleshufflesort_rescan(Tuplesortstate *state);
@@ -103,10 +103,13 @@ extern Tuplesortstate *tuplesort_begin_datum(Oid datumType,
 					  Oid sortOperator, Oid sortCollation,
 					  bool nullsFirstFlag,
 					  int workMem, bool randomAccess);
-extern HeapTuple tupleshufflesort_getheaptuple(Tuplesortstate *state, 
-					bool forward, 
-					bool *should_free);
 
+
+extern void tupleshufflesort_reset_state(Tuplesortstate *state);
+extern bool tupleshufflesort_is_read_buffer_null(Tuplesortstate *state);
+extern void tupleshufflesort_init_buffer(Tuplesortstate *state);
+extern bool tupleshufflesort_has_tuple_in_buffer(Tuplesortstate *state);
+extern void tupleshufflesort_swapbuffer(Tuplesortstate *state);
 
 extern void tuplesort_set_bound(Tuplesortstate *state, int64 bound);
 

@@ -203,17 +203,20 @@ void* write_thread_run(SortState *node) {
 	Tuplesortstate* state = node->tuplesortstate;
 
     while(true) {
+		
         TupleTableSlot* tuple_slot = ExecProcNode(outerNode);
        
         // still put the tuple into the buffer when tuple == null
+		//pthread_mutex_lock(&rw_mutex);
         bool write_buffer_full = tupleshufflesort_puttupleslot(state, tuple_slot);
+		//pthread_mutex_unlock(&rw_mutex);
 
         if (write_buffer_full || TupIsNull(tuple_slot)) {
-			elog(INFO, "[Write thread] write_buffer_full = %d,tuple_slot == null? %d", write_buffer_full, TupIsNull(tuple_slot));
+			//elog(INFO, "[Write thread] write_buffer_full = %d, tuple_slot == null? %d", write_buffer_full, TupIsNull(tuple_slot));
             tupleshufflesort_performshuffle(state); // the last tuple can be null
-            elog(INFO, "[Write thread] Finish tupleshufflesort_performshuffle(state);");
+            //elog(INFO, "[Write thread] Finish tupleshufflesort_performshuffle(state);");
 			signal_buffer_full(node);
-			elog(INFO, "[Write thread] Finish signal_buffer_full(node);");
+			//elog(INFO, "[write thread] Finish signal_buffer_full(node);");
             if (!TupIsNull(tuple_slot))
                 wait_swap_finished(node);
            
@@ -343,10 +346,11 @@ ExecSort(SortState *node)
 	// if read_buffer == NULL
 	if (tupleshufflesort_is_read_buffer_null(state)) {     
         wait_buffer_full(node);
-        
 		// write_buffer = buffer2;
         // read_buffer = buffer1;
+		//pthread_mutex_lock(&rw_mutex);
 		tupleshufflesort_init_buffer(state);
+		//pthread_mutex_unlock(&rw_mutex);
         signal_swap_finished(node);
     }
 
@@ -361,25 +365,30 @@ ExecSort(SortState *node)
     }
 	*/
 	if (tupleshufflesort_has_tuple_in_buffer(state)) {
+		//pthread_mutex_lock(&rw_mutex);
 		// slot can be null
-		elog(INFO, "[Read thread] Finish tupleshufflesort_has_tuple_in_buffer(state);");
+		//elog(INFO, "[Read thread] Finish tupleshufflesort_has_tuple_in_buffer(state);");	
 		tupleshufflesort_gettupleslot(state, slot);
-		elog(INFO, "[Read thread] tupleshufflesort_gettupleslot(state, slot); when read_buffer = null");
+		//elog(INFO, "[Read thread] tupleshufflesort_gettupleslot (when read_buffer = null), slot = %x", slot);
 		// slot can be empty, so TupleIsNull(slot) == true
+		//pthread_mutex_unlock(&rw_mutex);
 		return slot;
 	}
 	
     else {
-		elog(INFO, "[Read thread] Begin wait_buffer_full(node);");
+		
+		//elog(INFO, "[Read thread] Begin wait_buffer_full(node);");
         wait_buffer_full(node);
 		// swap(&read_buffer, &write_buffer) and reset fetch_index = 0;
 		tupleshufflesort_swapbuffer(state);
         signal_swap_finished(node);
 
-		elog(INFO, "[Read thread] Begin tupleshufflesort_gettupleslot(state, slot) when read_buffer != null;");
-        tupleshufflesort_gettupleslot(state, slot);
-		elog(INFO, "[Read thread] Finish tupleshufflesort_gettupleslot(state, slot) when read_buffer != null;");
-        return slot;
+		//pthread_mutex_lock(&rw_mutex);
+		//elog(INFO, "[Read thread] Begin tupleshufflesort_gettupleslot(state, slot) when read_buffer != null;");
+		tupleshufflesort_gettupleslot(state, slot);
+		//elog(INFO, "[Read thread] Finish tupleshufflesort_gettupleslot(state, slot) when read_buffer != null;");
+        //pthread_mutex_unlock(&rw_mutex);
+		return slot;
     }  
 	
 }

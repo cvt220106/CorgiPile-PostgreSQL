@@ -430,6 +430,65 @@ fast_transfer_slot_to_sgd_tuple (
 	SGDTuple* sgd_tuple, 
 	SGDTupleDesc* sgd_tupledesc) {
 
+	/*
+	// store the values of slot to values/isnulls arrays
+	int k_col = sgd_tupledesc->k_col;
+	int v_col = sgd_tupledesc->v_col;
+	int label_col = sgd_tupledesc->label_col;
+
+	
+	// e.g., features = [0.1, 0, 0.2, 0, 0, 0.3, 0, 0], class_label = -1
+	// Tuple = {10, {0, 2, 5}, {0.1, 0.2, 0.3}, -1}
+	Datum v_dat = slot->tts_values[v_col];
+	ArrayType  *v_array = DatumGetArrayTypeP(v_dat); // Datum{0.1, 0.2, 0.3}
+	
+	double *v;
+    int v_num = my_parse_array_no_copy((struct varlena*) v_array, 
+            sizeof(float8), (char **) &v);
+
+
+	Datum label_dat = slot->tts_values[label_col];
+	int label = DatumGetInt32(label_dat);
+	sgd_tuple->class_label = label;
+
+
+	/* double* v => double* features */
+	double* features = sgd_tuple->features;
+	int n_features = sgd_tupledesc->n_features;
+	// if sparse dataset
+	/*
+	if (k_col >= 0) {
+		// k Datum array => int* k 
+		Datum k_dat = slot->tts_values[k_col];
+		ArrayType  *k_array = DatumGetArrayTypeP(k_dat);
+		int *k;
+    	int k_num = my_parse_array_no_copy((struct varlena*) k_array, 
+            	sizeof(int), (char **) &k);
+
+		memset(features, 0, sizeof(double) * n_features);
+
+		for (int i = 0; i < k_num; i++) {
+			int f_index = k[i]; // {0, 2, 5}, k[1] = 2
+			features[f_index] = v[i]; // {0.1, 0.2, 0.3}, features[2] = 0.2
+		}
+	}
+	
+	else {
+		//sgd_tuple->features = v;
+		memcpy(features, v, v_num * sizeof(double));
+	}
+	*/
+	memcpy(sgd_tuple->features, slot->features, n_features * sizeof(double));
+	sgd_tuple->class_label = slot->label;
+}
+
+/*
+static void
+fast_transfer_slot_to_sgd_tuple (
+	TupleTableSlot* slot, 
+	SGDTuple* sgd_tuple, 
+	SGDTupleDesc* sgd_tupledesc) {
+
 	// store the values of slot to values/isnulls arrays
 	int k_col = sgd_tupledesc->k_col;
 	int v_col = sgd_tupledesc->v_col;
@@ -454,12 +513,12 @@ fast_transfer_slot_to_sgd_tuple (
 	sgd_tuple->class_label = label;
 
 
-	/* double* v => double* features */
+	// double* v => double* features 
 	double* features = sgd_tuple->features;
 	int n_features = sgd_tupledesc->n_features;
 	// if sparse dataset
 	if (k_col >= 0) {
-		/* k Datum array => int* k */
+		// k Datum array => int* k 
 		Datum k_dat = slot->tts_values[k_col];
 		ArrayType  *k_array = DatumGetArrayTypeP(k_dat);
 		int *k;
@@ -480,6 +539,7 @@ fast_transfer_slot_to_sgd_tuple (
 	}
 	
 }
+*/
 
 /**
  * From bismarck

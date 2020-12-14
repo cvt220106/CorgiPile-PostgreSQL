@@ -21,6 +21,7 @@
 #include "utils/tuplesort.h"
 #include "pthread.h"
 
+
 static void free_buffer(Tuplesortstate* tuplesortstate);
 static void init_Tuplesortstate(SortState *node);
 static void reset_sort_state(SortState *node);
@@ -207,9 +208,7 @@ void* write_thread_run(SortState *node) {
         TupleTableSlot* tuple_slot = ExecProcNode(outerNode);
        
         // still put the tuple into the buffer when tuple == null
-		//pthread_mutex_lock(&rw_mutex);
         bool write_buffer_full = tupleshufflesort_puttupleslot(state, tuple_slot);
-		//pthread_mutex_unlock(&rw_mutex);
 
         if (write_buffer_full || TupIsNull(tuple_slot)) {
 			//elog(INFO, "[Write thread] write_buffer_full = %d, tuple_slot == null? %d", write_buffer_full, TupIsNull(tuple_slot));
@@ -243,79 +242,6 @@ void* write_thread_run(SortState *node) {
  *		  -- the outer child is prepared to return the first tuple.
  * ----------------------------------------------------------------
  */
-/*
-TupleTableSlot *
-ExecSort(SortState *node)
-{
-	EState	   *estate = node->ss.ps.state;
-	ScanDirection dir = estate->es_direction; // going to be set to ShuffleScanDirection
-	Tuplesortstate *state = node->tuplesortstate;
-	TupleTableSlot *slot;
-
-	if (state == NULL) {
-		// build a new tuplesortstate with new buffer
-		init_Tuplesortstate(node);
-		// reset the tuplesortstate index, etc.
-		reset_sort_state(node);
-		// node->rescan_count = 0;
-		state = node->tuplesortstate;
-		
-	}
-
-
-	if (node->buffer_empty) {
-		if (node->eof_reach) {
-			// if (node->rescan_count++ < 2) {
-			// 	ExecReScanSort(node);
-			// 	state = node->tuplesortstate;
-			// }
-			// else
-			// 	return NULL;
-			return NULL;
-		}
-			
-
-		bool buffer_full = false;
-		PlanState  *outerNode = outerPlanState(node);
-
-		while(true) {
-      		// fetch a tuple from the ShuffleScanNode 
-      		slot = ExecProcNode(outerNode);
-      		// put_tuple_into_buffer(tuple, buffer);
-
-			if (!TupIsNull(slot)) { // a non-empty slot, put it into the buffer
-				buffer_full = tupleshufflesort_puttupleslot(state, slot);
-			} 
-			else {
-				node->eof_reach = true;
-				// buffer = [     ], tuple = null (eof_reach)
-				if (is_shuffle_buffer_emtpy(state)) {
-					return NULL; // return slot = null;
-				}
-			}
-			
-			if (buffer_full || node->eof_reach) {
-				tupleshufflesort_performshuffle(state);
-				node->buffer_empty = false;
-				break;
-			}	
-   		}
-	}
-	
-	slot = node->ss.ps.ps_ResultTupleSlot;
-
-	// buffer_full or buffer_is_halfly_filled in the end
-	bool tuple_left = tupleshufflesort_gettupleslot(state, slot);
-
-	// all the tuples are extracted from buffer
-	if (tuple_left == false) {
-		node->buffer_empty = true;
-	}
-
-	return slot;
-}
-*/
-
 TupleTableSlot *
 ExecSort(SortState *node)
 {
@@ -348,12 +274,9 @@ ExecSort(SortState *node)
         wait_buffer_full(node);
 		// write_buffer = buffer2;
         // read_buffer = buffer1;
-		//pthread_mutex_lock(&rw_mutex);
 		tupleshufflesort_init_buffer(state);
-		//pthread_mutex_unlock(&rw_mutex);
         signal_swap_finished(node);
     }
-
 
 	slot = node->ss.ps.ps_ResultTupleSlot;
 
@@ -365,29 +288,24 @@ ExecSort(SortState *node)
     }
 	*/
 	if (tupleshufflesort_has_tuple_in_buffer(state)) {
-		//pthread_mutex_lock(&rw_mutex);
 		// slot can be null
-		//elog(INFO, "[Read thread] Finish tupleshufflesort_has_tuple_in_buffer(state);");	
+		// elog(INFO, "[Read thread] Finish tupleshufflesort_has_tuple_in_buffer(state);");	
 		tupleshufflesort_gettupleslot(state, slot);
-		//elog(INFO, "[Read thread] tupleshufflesort_gettupleslot (when read_buffer = null), slot = %x", slot);
+		// elog(INFO, "[Read thread] tupleshufflesort_gettupleslot (when read_buffer = null), slot = %x", slot);
 		// slot can be empty, so TupleIsNull(slot) == true
-		//pthread_mutex_unlock(&rw_mutex);
 		return slot;
 	}
 	
     else {
-		
 		//elog(INFO, "[Read thread] Begin wait_buffer_full(node);");
         wait_buffer_full(node);
 		// swap(&read_buffer, &write_buffer) and reset fetch_index = 0;
 		tupleshufflesort_swapbuffer(state);
         signal_swap_finished(node);
 
-		//pthread_mutex_lock(&rw_mutex);
 		//elog(INFO, "[Read thread] Begin tupleshufflesort_gettupleslot(state, slot) when read_buffer != null;");
 		tupleshufflesort_gettupleslot(state, slot);
 		//elog(INFO, "[Read thread] Finish tupleshufflesort_gettupleslot(state, slot) when read_buffer != null;");
-        //pthread_mutex_unlock(&rw_mutex);
 		return slot;
     }  
 	
@@ -708,3 +626,77 @@ ExecReScanSort(SortState *node)
 
 // 	return slot;
 // }
+
+
+/*
+TupleTableSlot *
+ExecSort(SortState *node)
+{
+	EState	   *estate = node->ss.ps.state;
+	ScanDirection dir = estate->es_direction; // going to be set to ShuffleScanDirection
+	Tuplesortstate *state = node->tuplesortstate;
+	TupleTableSlot *slot;
+
+	if (state == NULL) {
+		// build a new tuplesortstate with new buffer
+		init_Tuplesortstate(node);
+		// reset the tuplesortstate index, etc.
+		reset_sort_state(node);
+		// node->rescan_count = 0;
+		state = node->tuplesortstate;
+		
+	}
+
+
+	if (node->buffer_empty) {
+		if (node->eof_reach) {
+			// if (node->rescan_count++ < 2) {
+			// 	ExecReScanSort(node);
+			// 	state = node->tuplesortstate;
+			// }
+			// else
+			// 	return NULL;
+			return NULL;
+		}
+			
+
+		bool buffer_full = false;
+		PlanState  *outerNode = outerPlanState(node);
+
+		while(true) {
+      		// fetch a tuple from the ShuffleScanNode 
+      		slot = ExecProcNode(outerNode);
+      		// put_tuple_into_buffer(tuple, buffer);
+
+			if (!TupIsNull(slot)) { // a non-empty slot, put it into the buffer
+				buffer_full = tupleshufflesort_puttupleslot(state, slot);
+			} 
+			else {
+				node->eof_reach = true;
+				// buffer = [     ], tuple = null (eof_reach)
+				if (is_shuffle_buffer_emtpy(state)) {
+					return NULL; // return slot = null;
+				}
+			}
+			
+			if (buffer_full || node->eof_reach) {
+				tupleshufflesort_performshuffle(state);
+				node->buffer_empty = false;
+				break;
+			}	
+   		}
+	}
+	
+	slot = node->ss.ps.ps_ResultTupleSlot;
+
+	// buffer_full or buffer_is_halfly_filled in the end
+	bool tuple_left = tupleshufflesort_gettupleslot(state, slot);
+
+	// all the tuples are extracted from buffer
+	if (tuple_left == false) {
+		node->buffer_empty = true;
+	}
+
+	return slot;
+}
+*/

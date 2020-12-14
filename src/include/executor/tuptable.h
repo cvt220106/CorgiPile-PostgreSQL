@@ -127,7 +127,8 @@ typedef struct TupleTableSlot
 	HeapTupleData tts_minhdr;	/* workspace for minimal-tuple-only case */
 	long		tts_off;		/* saved state for slot_deform_tuple */
 
-	double* features;
+	double* features_k;
+	double* features_v;
 	int label;
 } TupleTableSlot;
 

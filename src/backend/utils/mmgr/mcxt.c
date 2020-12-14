@@ -578,20 +578,7 @@ MemoryContextAlloc(MemoryContext context, Size size)
 
 	context->isReset = false;
 
-	void *ret = (*context->methods->alloc) (context, size);
-
-	/*
-	if (context == NULL && ret == NULL)
-		elog(INFO, "MemoryContextAlloc: context = NULL, ret = NULL");
-	else if (context == NULL)
-		elog(INFO, "MemoryContextAlloc: context = NULL, ret = %x", (unsigned int)ret);
-	else if (ret == NULL)
-		elog(INFO, "MemoryContextAlloc: context = %x, ret = NULL", (unsigned int)context);
-	else
-		elog(INFO, "MemoryContextAlloc: context = %x, ret = %x", (unsigned int)context, (unsigned int)ret);
-	*/
-
-	return ret;
+	return (*context->methods->alloc) (context, size);
 }
 
 /*
@@ -617,16 +604,6 @@ MemoryContextAllocZero(MemoryContext context, Size size)
 	ret = (*context->methods->alloc) (context, size);
 
 	MemSetAligned(ret, 0, size);
-	/*
-	if (context == NULL && ret == NULL)
-		elog(INFO, "ZeroMemoryContextAlloc: context = NULL, ret = NULL");
-	else if (context == NULL)
-		elog(INFO, "ZeroMemoryContextAlloc: context = NULL, ret = %x", (unsigned int)ret);
-	else if (ret == NULL)
-		elog(INFO, "ZeroMemoryContextAlloc: context = %x, ret = NULL", (unsigned int)context);
-	else
-		elog(INFO, "ZeroMemoryContextAlloc: context = %x, ret = %x", (unsigned int)context, (unsigned int)ret);
-	*/
 
 	return ret;
 }
@@ -681,21 +658,6 @@ pfree(void *pointer)
 	header = (StandardChunkHeader *)
 		((char *) pointer - STANDARDCHUNKHEADERSIZE);
 
-	// if (CurrentMemoryContext != NULL)
-	// 	elog(INFO, "pfree(): context = %x, pointer = %x", (unsigned int)CurrentMemoryContext, (unsigned int)pointer);
-	// else
-	// 	elog(INFO, "pfree(): context = NULL, pointer = %x", (unsigned int)pointer);
-
-	
-	
-	// added by Lijie
-	if (MemoryContextIsValid(header->context) == false) {
-		//  pfree(): context.name = ErrorContext
-		elog(LOG, "header->context = NULL, pointer = %x, context = %x", (unsigned int)pointer, (unsigned int)CurrentMemoryContext);
-		elog(LOG, "pfree(): context.name = %s", CurrentMemoryContext->name);
-	}
-	
-	// add end
 	AssertArg(MemoryContextIsValid(header->context));
 
 	(*header->context->methods->free_p) (header->context, pointer);
@@ -755,9 +717,6 @@ MemoryContextSwitchTo(MemoryContext context)
 
 	old = CurrentMemoryContext;
 	CurrentMemoryContext = context;
-
-	elog(INFO, "switch from oldcontext to newcontext");
-	elog(INFO, "switch from oldcontext = %x to newcontext = %x", (unsigned int)old, (unsigned int)context);
 	return old;
 }
 #endif   /* ! USE_INLINE */

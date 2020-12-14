@@ -47,18 +47,7 @@ typedef struct TestState
 	int right_count; // rightly classified
 } TestState;
 
-typedef struct SGDTupleDesc
-{ 
-	// e.g., features = [0.1, 0, 0.2, 0, 0, 0.3, 0, 0], class_label = -1
-	// Tuple = {10, {0, 2, 5}, {0.1, 0.2, 0.3}, -1}
-	int k_col; // 1 // just for sparse dataset, if dense, only v_col is used.
-	int v_col; // 2
-	int label_col; // 3
-	int n_features;  // 8
-	
-	// Datum* values;
-	// bool* isnulls;
-} SGDTupleDesc;
+
 
 
 // extern Model* init_model(int n_features);

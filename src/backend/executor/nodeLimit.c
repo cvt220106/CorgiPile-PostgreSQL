@@ -47,11 +47,13 @@ char* set_table_name = "forest";
 
 bool set_run_test = false;
 
+SGDTupleDesc* sgd_tupledesc; // also used in nodeSort.c for parsing tuple_slot to double* features
+
 static Model* init_model(int n_features);
 static void ExecClearModel(Model* model);
 static SGDBatchState* init_SGDBatchState(int n_features);
 static SGDTuple* init_SGDTuple(int n_features);
-static SGDTupleDesc* init_SGDTupleDesc(int col_num, int n_features);
+static SGDTupleDesc* init_SGDTupleDesc(int n_features);
 static void clear_SGDBatchState(SGDBatchState* batchstate, int n_features);
 static void free_SGDBatchState(SGDBatchState* batchstate);
 static void free_SGDTuple(SGDTuple* sgd_tuple);
@@ -122,7 +124,7 @@ static SGDTuple* init_SGDTuple(int n_features) {
     return sgd_tuple;
 }
 
-static SGDTupleDesc* init_SGDTupleDesc(int col_num, int n_features) {
+static SGDTupleDesc* init_SGDTupleDesc(int n_features) {
     SGDTupleDesc* sgd_tupledesc = (SGDTupleDesc *) palloc0(sizeof(SGDTupleDesc));
 
     // sgd_tupledesc->values = (Datum *) palloc0(sizeof(Datum) * col_num);
@@ -424,63 +426,63 @@ transfer_slot_to_sgd_tuple(
 }
 */
 
-static void
-fast_transfer_slot_to_sgd_tuple (
-	TupleTableSlot* slot, 
-	SGDTuple* sgd_tuple, 
-	SGDTupleDesc* sgd_tupledesc) {
+// static void
+// fast_transfer_slot_to_sgd_tuple (
+// 	TupleTableSlot* slot, 
+// 	SGDTuple* sgd_tuple, 
+// 	SGDTupleDesc* sgd_tupledesc) {
 
-	/*
-	// store the values of slot to values/isnulls arrays
-	int k_col = sgd_tupledesc->k_col;
-	int v_col = sgd_tupledesc->v_col;
-	int label_col = sgd_tupledesc->label_col;
+// 	/*
+// 	// store the values of slot to values/isnulls arrays
+// 	int k_col = sgd_tupledesc->k_col;
+// 	int v_col = sgd_tupledesc->v_col;
+// 	int label_col = sgd_tupledesc->label_col;
 
 	
-	// e.g., features = [0.1, 0, 0.2, 0, 0, 0.3, 0, 0], class_label = -1
-	// Tuple = {10, {0, 2, 5}, {0.1, 0.2, 0.3}, -1}
-	Datum v_dat = slot->tts_values[v_col];
-	ArrayType  *v_array = DatumGetArrayTypeP(v_dat); // Datum{0.1, 0.2, 0.3}
+// 	// e.g., features = [0.1, 0, 0.2, 0, 0, 0.3, 0, 0], class_label = -1
+// 	// Tuple = {10, {0, 2, 5}, {0.1, 0.2, 0.3}, -1}
+// 	Datum v_dat = slot->tts_values[v_col];
+// 	ArrayType  *v_array = DatumGetArrayTypeP(v_dat); // Datum{0.1, 0.2, 0.3}
 	
-	double *v;
-    int v_num = my_parse_array_no_copy((struct varlena*) v_array, 
-            sizeof(float8), (char **) &v);
+// 	double *v;
+//     int v_num = my_parse_array_no_copy((struct varlena*) v_array, 
+//             sizeof(float8), (char **) &v);
 
 
-	Datum label_dat = slot->tts_values[label_col];
-	int label = DatumGetInt32(label_dat);
-	sgd_tuple->class_label = label;
+// 	Datum label_dat = slot->tts_values[label_col];
+// 	int label = DatumGetInt32(label_dat);
+// 	sgd_tuple->class_label = label;
 
 
-	/* double* v => double* features */
-	double* features = sgd_tuple->features;
-	int n_features = sgd_tupledesc->n_features;
-	// if sparse dataset
-	/*
-	if (k_col >= 0) {
-		// k Datum array => int* k 
-		Datum k_dat = slot->tts_values[k_col];
-		ArrayType  *k_array = DatumGetArrayTypeP(k_dat);
-		int *k;
-    	int k_num = my_parse_array_no_copy((struct varlena*) k_array, 
-            	sizeof(int), (char **) &k);
+// 	/* double* v => double* features */
+// 	double* features = sgd_tuple->features;
+// 	int n_features = sgd_tupledesc->n_features;
+// 	// if sparse dataset
+// 	/*
+// 	if (k_col >= 0) {
+// 		// k Datum array => int* k 
+// 		Datum k_dat = slot->tts_values[k_col];
+// 		ArrayType  *k_array = DatumGetArrayTypeP(k_dat);
+// 		int *k;
+//     	int k_num = my_parse_array_no_copy((struct varlena*) k_array, 
+//             	sizeof(int), (char **) &k);
 
-		memset(features, 0, sizeof(double) * n_features);
+// 		memset(features, 0, sizeof(double) * n_features);
 
-		for (int i = 0; i < k_num; i++) {
-			int f_index = k[i]; // {0, 2, 5}, k[1] = 2
-			features[f_index] = v[i]; // {0.1, 0.2, 0.3}, features[2] = 0.2
-		}
-	}
+// 		for (int i = 0; i < k_num; i++) {
+// 			int f_index = k[i]; // {0, 2, 5}, k[1] = 2
+// 			features[f_index] = v[i]; // {0.1, 0.2, 0.3}, features[2] = 0.2
+// 		}
+// 	}
 	
-	else {
-		//sgd_tuple->features = v;
-		memcpy(features, v, v_num * sizeof(double));
-	}
-	*/
-	memcpy(sgd_tuple->features, slot->features, n_features * sizeof(double));
-	sgd_tuple->class_label = slot->label;
-}
+// 	else {
+// 		//sgd_tuple->features = v;
+// 		memcpy(features, v, v_num * sizeof(double));
+// 	}
+// 	*/
+// 	memcpy(sgd_tuple->features, slot->features, n_features * sizeof(double));
+// 	sgd_tuple->class_label = slot->label;
+// }
 
 /*
 static void
@@ -621,7 +623,7 @@ ExecLimit(LimitState *node)
 	int iter_num = model->iter_num;
     int batch_size = node->model->batch_size;
 
-	SGDTupleDesc* sgd_tupledesc = init_SGDTupleDesc(col_num, model->n_features);
+	
 
 
 	// for counting execution time for each iteration
@@ -681,10 +683,13 @@ ExecLimit(LimitState *node)
 				}
 			}
 
-			parse_start = clock();
-			fast_transfer_slot_to_sgd_tuple(slot, sgd_tuple, sgd_tupledesc);
-			parse_finish = clock();
-			parse_time += (double)(parse_finish - parse_start) / CLOCKS_PER_SEC;    
+			// parse_start = clock();
+			// fast_transfer_slot_to_sgd_tuple(slot, sgd_tuple, sgd_tupledesc);
+			// parse_finish = clock();
+			// parse_time += (double)(parse_finish - parse_start) / CLOCKS_PER_SEC;    
+
+			sgd_tuple->features = slot->features_v;
+			sgd_tuple->class_label = slot->label;
 
 			comp_start = clock();
 			perform_SGD(node->model, sgd_tuple, batchstate, ith_tuple);
@@ -723,7 +728,9 @@ ExecLimit(LimitState *node)
 						break;
 					}
 				}
-				fast_transfer_slot_to_sgd_tuple(slot, sgd_tuple, sgd_tupledesc);
+				// fast_transfer_slot_to_sgd_tuple(slot, sgd_tuple, sgd_tupledesc);
+				sgd_tuple->features = slot->features_v;
+				sgd_tuple->class_label = slot->label;
 				compute_tuple_accuracy(node->model, sgd_tuple, test_state);
 			}
 
@@ -847,7 +854,7 @@ ExecInitLimit(Limit *node, EState *estate, int eflags)
 	
 
     sgdstate->model = init_model(n_features);
-	
+	sgd_tupledesc = init_SGDTupleDesc(n_features);
 
 	elog(LOG, "[Model] Initialize %s model", sgdstate->model->model_name);
     // elog(LOG, "[SVM] loss = 0, p1 = 0, p2 = 0, gradient = 0, batch_size = 10, learning_rate = 0.1");

@@ -311,6 +311,11 @@ GetMemoryChunkSpace(void *pointer)
 	header = (StandardChunkHeader *)
 		((char *) pointer - STANDARDCHUNKHEADERSIZE);
 
+	if (header->context == NULL)
+		elog(INFO, "header->context = NULL");
+	else if (!MemoryContextIsValid(header->context))
+		elog(INFO, "header->context->name = %s", header->context->name);
+
 	AssertArg(MemoryContextIsValid(header->context));
 
 	return (*header->context->methods->get_chunk_space) (header->context,

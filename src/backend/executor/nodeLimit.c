@@ -120,7 +120,7 @@ static TestState* init_TestState(bool run_test) {
 
 static SGDTuple* init_SGDTuple(int n_features) {
     SGDTuple* sgd_tuple = (SGDTuple *) palloc0(sizeof(SGDTuple));
-    sgd_tuple->features = (double *) palloc0(sizeof(double) * n_features);
+    //sgd_tuple->features = (double *) palloc0(sizeof(double) * n_features);
     return sgd_tuple;
 }
 
@@ -174,7 +174,7 @@ static void free_SGDBatchState(SGDBatchState* batchstate) {
 }
 
 static void free_SGDTuple(SGDTuple* sgd_tuple) {
-    pfree(sgd_tuple->features);
+    //pfree(sgd_tuple->features);
     pfree(sgd_tuple);
 }
 

@@ -652,14 +652,14 @@ ExecLimit(LimitState *node)
 
 				if (i == 1) {
 					double avg_page_tuple_num = (double) model->tuple_num / table_page_number;
-					elog(LOG, "[Computed Param] table_tuple_num = %d, buffer_block_num = %.2f", 
+					elog(INFO, "[Computed Param] table_tuple_num = %d, buffer_block_num = %.2f", 
 						model->tuple_num, (double) set_buffer_tuple_num / (set_block_page_num * avg_page_tuple_num));
 				}
 
 				iter_finish = clock();
 				iter_exec_time = (double)(iter_finish - iter_start) / CLOCKS_PER_SEC; 
 				double read_time = iter_exec_time - parse_time - comp_time;
-				elog(LOG, "[Iter %2d] Loss = %.2f, exec_t = %.2fs, read_t = %.2fs, parse_t = %.2fs, comp_t = %.2fs", 
+				elog(INFO, "[Iter %2d] Loss = %.2f, exec_t = %.2fs, read_t = %.2fs, parse_t = %.2fs, comp_t = %.2fs", 
 							i, model->total_loss, iter_exec_time, read_time, parse_time, comp_time);
 
 				if (i == iter_num) { // finish
@@ -687,14 +687,17 @@ ExecLimit(LimitState *node)
 			// fast_transfer_slot_to_sgd_tuple(slot, sgd_tuple, sgd_tupledesc);
 			// parse_finish = clock();
 			// parse_time += (double)(parse_finish - parse_start) / CLOCKS_PER_SEC;    
-
+			
+			// parse_start = clock();
 			sgd_tuple->features = slot->features_v;
 			sgd_tuple->class_label = slot->label;
+			//parse_finish = clock();
+			//parse_time += (double)(parse_finish - parse_start) / CLOCKS_PER_SEC;    
 
-			comp_start = clock();
+			//comp_start = clock();
 			perform_SGD(node->model, sgd_tuple, batchstate, ith_tuple);
-			comp_finish = clock();
-			comp_time += (double)(comp_finish - comp_start) / CLOCKS_PER_SEC;
+			//comp_finish = clock();
+			//comp_time += (double)(comp_finish - comp_start) / CLOCKS_PER_SEC;
 
             ith_tuple = (ith_tuple + 1) % batch_size;
 
@@ -712,7 +715,7 @@ ExecLimit(LimitState *node)
 				if (TupIsNull(slot)) {
 					test_state->test_accuracy = (double) test_state->right_count / model->tuple_num;
 					
-					elog(LOG, "[Iter %2d][Test] test_total_loss = %.2f, test_accuracy = %.2f", 
+					elog(INFO, "[Iter %2d][Test] test_total_loss = %.2f, test_accuracy = %.2f", 
 							i, test_state->test_total_loss, test_state->test_accuracy);
 
 					if (i == iter_num) { // finish
@@ -745,7 +748,7 @@ ExecLimit(LimitState *node)
 
     // node->ps.ps_ResultTupleSlot; // = Model->w, => ExecStoreMinimalTuple();
 	// slot = node->ps.ps_ResultTupleSlot;
-	// elog(LOG, "[Model total loss %f]", model->total_loss);
+	// elog(INFO, "[Model total loss %f]", model->total_loss);
 
 	// slot = output_model_record(node->ps.ps_ResultTupleSlot, model);
 
@@ -822,16 +825,16 @@ ExecInitLimit(Limit *node, EState *estate, int eflags)
 
 	//
 	const char* work_mem_str = GetConfigOption("work_mem", false, false);
-	elog(LOG, "============== Begin Training on %s Using %s Model ==============", set_table_name, set_model_name);
-	// elog(LOG, "[Param] model_name = %s", set_model_name);
-	elog(LOG, "[Param] run_test = %d", set_run_test);
-	elog(LOG, "[Param] work_mem = %s KB", work_mem_str);
-	elog(LOG, "[Param] block_page_num = %d pages", set_block_page_num);
-	// elog(LOG, "[Param] io_block_size = %d pages", set_io_big_block_size);
-	elog(LOG, "[Param] buffer_tuple_num = %d tuples", set_buffer_tuple_num);
-	elog(LOG, "[Param] batch_size = %d", set_batch_size);
-	elog(LOG, "[Param] iter_num = %d", set_iter_num);
-	elog(LOG, "[Param] learning_rate = %f", set_learning_rate);
+	elog(INFO, "============== Begin Training on %s Using %s Model ==============", set_table_name, set_model_name);
+	// elog(INFO, "[Param] model_name = %s", set_model_name);
+	elog(INFO, "[Param] run_test = %d", set_run_test);
+	elog(INFO, "[Param] work_mem = %s KB", work_mem_str);
+	elog(INFO, "[Param] block_page_num = %d pages", set_block_page_num);
+	// elog(INFO, "[Param] io_block_size = %d pages", set_io_big_block_size);
+	elog(INFO, "[Param] buffer_tuple_num = %d tuples", set_buffer_tuple_num);
+	elog(INFO, "[Param] batch_size = %d", set_batch_size);
+	elog(INFO, "[Param] iter_num = %d", set_iter_num);
+	elog(INFO, "[Param] learning_rate = %f", set_learning_rate);
 
 
 	/*
@@ -856,8 +859,8 @@ ExecInitLimit(Limit *node, EState *estate, int eflags)
     sgdstate->model = init_model(n_features);
 	sgd_tupledesc = init_SGDTupleDesc(n_features);
 
-	elog(LOG, "[Model] Initialize %s model", sgdstate->model->model_name);
-    // elog(LOG, "[SVM] loss = 0, p1 = 0, p2 = 0, gradient = 0, batch_size = 10, learning_rate = 0.1");
+	elog(INFO, "[Model] Initialize %s model", sgdstate->model->model_name);
+    // elog(INFO, "[SVM] loss = 0, p1 = 0, p2 = 0, gradient = 0, batch_size = 10, learning_rate = 0.1");
 
 	/*
 	 * tuple table initialization

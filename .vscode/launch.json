@@ -11,13 +11,21 @@
             "program": "${workspaceFolder}/src/backend/postgres",
             "args": [
                 "-D",
-                "/Users/xulijie/dev/DB-ML/pg9data"
+                "/datadisk/data/pg9data"
             ],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
             "environment": [],
             "externalConsole": true,
-            "MIMode": "lldb"
+            "linux": {
+                "MIMode": "gdb"
+            },
+            "osx": {
+                "MIMode": "lldb"
+            },
+            "windows": {
+                "MIMode": "gdb"
+            },
         },
         {
             "name": "(lldb) pg Launch help",
@@ -32,15 +40,31 @@
             "cwd": "${workspaceFolder}",
             "environment": [],
             "externalConsole": true,
-            "MIMode": "lldb"
+            "linux": {
+                "MIMode": "gdb"
+            },
+            "osx": {
+                "MIMode": "lldb"
+            },
+            "windows": {
+                "MIMode": "gdb"
+            },
         },
         {
-            "name": "(lldb) Launch",
+            "name": "C++ Attach",
             "type": "cppdbg",
             "request": "attach",
             "program": "${workspaceFolder}/src/backend/postgres",
             "processId": "${command:pickProcess}",
-            "MIMode": "lldb",
+            "linux": {
+                "MIMode": "gdb"
+            },
+            "osx": {
+                "MIMode": "lldb"
+            },
+            "windows": {
+                "MIMode": "gdb"
+            },
             "targetArchitecture": "x64",
             // "miDebuggerPath": "/Users/xulijie/.vscode/extensions/ms-vscode.cpptools-1.1.3/debugAdapters/lldb-mi/bin/lldb-mi",
             // "logging": {

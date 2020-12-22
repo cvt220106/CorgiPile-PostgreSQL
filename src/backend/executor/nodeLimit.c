@@ -99,7 +99,8 @@ void ExecClearModel(Model* model) {
 static SGDBatchState* init_SGDBatchState(int n_features) {
     SGDBatchState* batchstate = (SGDBatchState *) palloc0(sizeof(SGDBatchState));
     batchstate->gradients = (double *) palloc0(sizeof(double) * n_features);
-	for (int i = 0; i < n_features; i++)
+	int i;
+	for (i = 0; i < n_features; i++)
 		batchstate->gradients[i] = 0;
     batchstate->loss = 0;
 	batchstate->tuple_num = 0;
@@ -156,7 +157,8 @@ static SGDTupleDesc* init_SGDTupleDesc(int n_features) {
 }
 
 static void clear_SGDBatchState(SGDBatchState* batchstate, int n_features) {
-	for (int i = 0; i < n_features; i++)
+	int i;
+	for (i = 0; i < n_features; i++)
 		batchstate->gradients[i] = 0;
     batchstate->loss = 0;
 	batchstate->tuple_num = 0;
@@ -198,7 +200,8 @@ compute_tuple_gradient_loss_LR(SGDTuple* tp, Model* model, SGDBatchState* batchs
 
     // compute gradients of the incoming tuple
     double wx = 0;
-    for (int i = 0; i < n; i++)
+	int i;
+    for (i = 0; i < n; i++)
         wx = wx + model->w[i] * x[i];
     double ywx = y * wx;
 
@@ -207,7 +210,8 @@ compute_tuple_gradient_loss_LR(SGDTuple* tp, Model* model, SGDBatchState* batchs
 	double g_base = -y * (1 - 1 / (1 + exp(-ywx)));
 
     // Add this tuple's gradient to the previous gradients in this batch
-    for (int i = 0; i < n; i++) 
+	
+    for (i = 0; i < n; i++) 
         batchstate->gradients[i] += g_base * x[i];
 
     // compute the loss of the incoming tuple
@@ -229,12 +233,14 @@ compute_tuple_gradient_loss_SVM(SGDTuple* tp, Model* model, SGDBatchState* batch
 
     // compute gradients of the incoming tuple
     double wx = 0;
-    for (int i = 0; i < n; i++)
+	int i;
+    for (i = 0; i < n; i++)
         wx = wx + model->w[i] * x[i];
     double ywx = y * wx;
 
     if (1 - ywx > 0) {
-        for (int i = 0; i < n; i++)
+		int i;
+        for (i = 0; i < n; i++)
 			batchstate->gradients[i] = batchstate->gradients[i] - y * x[i];
     }
 
@@ -250,7 +256,8 @@ compute_tuple_gradient_loss_SVM(SGDTuple* tp, Model* model, SGDBatchState* batch
 static void update_model(Model* model, SGDBatchState* batchstate) {
 	if (batchstate->tuple_num > 0) {
 		 // add graidents to the model and clear the batch gradients
-		for (int i = 0; i < model->n_features; i++) {
+		int i;
+		for (i = 0; i < model->n_features; i++) {
 			model->w[i] = model->w[i] - model->learning_rate * batchstate->gradients[i] / batchstate->tuple_num;
 			// model->w[i] = model->w[i] - model->learning_rate * 
 			// 			 (batchstate->gradients[i] / batchstate->tuple_num + 0.01 * model->w[i]);
@@ -340,8 +347,8 @@ transfer_slot_to_sgd_tuple_getattr (
 
 		memset(features, 0, sizeof(double) * n_features);
 
-		
-		for (int i = 0; i < k_num; i++) {
+		int i;
+		for (i = 0; i < k_num; i++) {
 			int f_index = k[i]; // {0, 2, 5}, k[1] = 2
 			features[f_index] = v[i]; // {0.1, 0.2, 0.3}, features[2] = 0.2
 		}
@@ -639,7 +646,8 @@ ExecLimit(LimitState *node)
 	double comp_time = 0;
 
 	// iterations
-	for (int i = 1; i <= iter_num; i++) {
+	int i;
+	for (i = 1; i <= iter_num; i++) {
 		iter_start = clock();
 
 		int ith_tuple = 0;
@@ -768,7 +776,8 @@ void compute_tuple_accuracy(Model* model, SGDTuple* tp, TestState* test_state) {
     // compute loss of the incoming tuple
 	if (strcmp(model->model_name, "LR") == 0) {
 		double wx = 0;
-    	for (int i = 0; i < n; i++)
+		int i;
+    	for (i = 0; i < n; i++)
         	wx = wx + model->w[i] * x[i];
     	double ywx = y * wx;
 		tuple_loss = log(1 + exp(-ywx));
@@ -787,7 +796,8 @@ void compute_tuple_accuracy(Model* model, SGDTuple* tp, TestState* test_state) {
 	}
 	else if (strcmp(model->model_name, "SVM") == 0) {
 		double wx = 0;
-		for (int i = 0; i < n; i++)
+		int i;
+		for (i = 0; i < n; i++)
 			wx = wx + model->w[i] * x[i];
 		double ywx = y * wx;
 		// compute the loss of the incoming tuple

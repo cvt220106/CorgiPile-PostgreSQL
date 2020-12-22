@@ -515,7 +515,8 @@ shuffle_tuple(SortTuple *a, size_t n)
 	srand(time(0) + rand());
 
 	CHECK_FOR_INTERRUPTS();
-	for (int i = n - 1; i > 0; i--) {
+	int i;
+	for (i = n - 1; i > 0; i--) {
 		int r = rand() % (i + 1);
 		// swap(a + i, a + r);
 		SortTuple t = *(a + i);
@@ -531,7 +532,8 @@ free_tupleshufflesort_state(Tuplesortstate* state)
 {
 	MemoryContext oldcontext = MemoryContextSwitchTo(state->shufflesortcontext);
 
-	for (int i = 0; i < state->memtupsize; i++) {
+	int i;
+	for (i = 0; i < state->memtupsize; i++) {
 		if (state->memtuples_buffer_1[i].features_v != NULL) {
 			FREEMEM(state, GetMemoryChunkSpace(state->memtuples_buffer_1[i].features_v));
 			pfree(state->memtuples_buffer_1[i].features_v);
@@ -654,7 +656,8 @@ void fast_transfer_slot_to_sgd_tuple (
 
 		memset(sort_tuple->features_v, 0, sizeof(double) * n_features);
 
-		for (int i = 0; i < k_num; i++) {
+		int i;
+		for (i = 0; i < k_num; i++) {
 			int f_index = k[i]; // {0, 2, 5}, k[1] = 2
 			sort_tuple->features_v[f_index] = v[i]; // {0.1, 0.2, 0.3}, features[2] = 0.2
 		}
@@ -960,8 +963,8 @@ tupleshufflesort_begin_common(int workMem)
 		state->memtuples_buffer_2[i].features = (double *)palloc(54 * sizeof(double));
 	}
 	*/
-
-	for (int i = 0; i < state->memtupsize; i++) {
+	int i;
+	for (i = 0; i < state->memtupsize; i++) {
 		SortTuple null_tuple;
 		null_tuple.isnull = true;
 

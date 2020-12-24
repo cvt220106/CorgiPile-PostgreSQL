@@ -34,10 +34,18 @@ static void start_write_thread(SortState *node);
 
 pthread_t write_thread;
 
-pthread_mutex_t buffer_mutex = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t swap_mutex = PTHREAD_MUTEX_INITIALIZER;
-pthread_cond_t buffer_full_cond = PTHREAD_COND_INITIALIZER;
-pthread_cond_t swap_finished_cond = PTHREAD_COND_INITIALIZER;
+
+pthread_mutex_t buffer_mutex;
+pthread_mutex_t swap_mutex;
+pthread_cond_t buffer_full_cond;
+pthread_cond_t swap_finished_cond;
+
+
+// pthread_mutex_t buffer_mutex = PTHREAD_MUTEX_INITIALIZER;
+// pthread_mutex_t swap_mutex = PTHREAD_MUTEX_INITIALIZER;
+// pthread_cond_t buffer_full_cond = PTHREAD_COND_INITIALIZER;
+// pthread_cond_t swap_finished_cond = PTHREAD_COND_INITIALIZER;
+
 
 
 void wait_buffer_full(SortState *node) {
@@ -261,7 +269,12 @@ ExecSort(SortState *node)
 		reset_sort_state(node);
 		// node->rescan_count = 0;
 		state = node->tuplesortstate;
-		
+		// elog(INFO, "state == null, reset_sort_state");
+
+		Assert(pthread_mutex_init(&buffer_mutex, NULL) == 0);
+		Assert(pthread_mutex_init(&swap_mutex, NULL) == 0);
+		Assert(pthread_cond_init(&buffer_full_cond, NULL) == 0);
+		Assert(pthread_cond_init(&swap_finished_cond, NULL) == 0);
 	}
 
 	if (node->write_thread_not_started) {
@@ -348,10 +361,10 @@ ExecEndSort(SortState *node)
 	SO1_printf("ExecEndSort: %s\n",
 			   "sort node shutdown");
 
-	pthread_mutex_destroy(&buffer_mutex);
-    pthread_mutex_destroy(&swap_mutex);
-    pthread_cond_destroy(&buffer_full_cond);
-    pthread_cond_destroy(&swap_finished_cond);
+	Assert(pthread_mutex_destroy(&buffer_mutex) == 0);
+    Assert(pthread_mutex_destroy(&swap_mutex) == 0);
+    Assert(pthread_cond_destroy(&buffer_full_cond) == 0);
+    Assert(pthread_cond_destroy(&swap_finished_cond) == 0);
 }
 
 /* ----------------------------------------------------------------
@@ -407,6 +420,13 @@ ExecReScanSort(SortState *node)
 	/* must drop pointer to sort result tuple */
 	ExecClearTuple(node->ss.ps.ps_ResultTupleSlot);
 	reset_sort_state(node);
+
+	// Assert(pthread_mutex_destroy(&buffer_mutex) == 0);
+    // Assert(pthread_mutex_destroy(&swap_mutex) == 0);
+    // Assert(pthread_cond_destroy(&buffer_full_cond) == 0);
+    // Assert(pthread_cond_destroy(&swap_finished_cond) == 0);
+
+	
 	/*
 	 * If subnode is to be rescanned then we forget previous sort results; we
 	 * have to re-read the subplan and re-sort.  Also must re-sort if the

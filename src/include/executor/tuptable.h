@@ -130,6 +130,9 @@ typedef struct TupleTableSlot
 	double* features_k;
 	double* features_v;
 	int label;
+
+	// for debug
+	int did;
 } TupleTableSlot;
 
 #define TTS_HAS_PHYSICAL_TUPLE(slot)  \

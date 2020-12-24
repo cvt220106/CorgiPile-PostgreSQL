@@ -991,7 +991,7 @@ heapgettup_pagemode(HeapScanDesc scan,
 				scan->io_big_block_num = scan->io_big_block_num + 1; // 7 -> 8
 
 			if (!scan->rescaned) {
-				elog(LOG, "[Table] table_page_num = %d, table_block_num = %d", table_page_num, scan->io_big_block_num);
+				elog(INFO, "[Table] table_page_num = %d, table_block_num = %d", table_page_num, scan->io_big_block_num);
 				table_page_number = table_page_num;
 			}
 				

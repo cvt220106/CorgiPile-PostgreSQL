@@ -178,6 +178,9 @@ typedef struct
 	Datum		datum1;			/* value of first key column */
 	bool		isnull1;		/* is first key column NULL? */
 	int			tupindex;		/* see notes above */
+
+	// for debug
+	// int 		did;
 } SortTuple;
 
 
@@ -515,7 +518,17 @@ shuffle_tuple(SortTuple *a, size_t n)
 	srand(time(0) + rand());
 
 	CHECK_FOR_INTERRUPTS();
+	
+
 	int i;
+
+	// for (i = n - 1; i > 0; i--) {
+	// 	SortTuple t = *(a + i);
+	// 	if (t.did == 309482)
+	// 	    elog(INFO, "Before shuffle_tuple(): %d, {%f, %f, %f, %f}, %d", t.did, t.features_v[0], 
+	// 		t.features_v[1], t.features_v[2], t.features_v[3], t.class_label);
+	// }
+
 	for (i = n - 1; i > 0; i--) {
 		int r = rand() % (i + 1);
 		// swap(a + i, a + r);
@@ -523,6 +536,7 @@ shuffle_tuple(SortTuple *a, size_t n)
 		*(a + i) = *(a + r);
 		*(a + r) = t;
 	}
+
 }
 
 
@@ -537,6 +551,7 @@ free_tupleshufflesort_state(Tuplesortstate* state)
 		if (state->memtuples_buffer_1[i].features_v != NULL) {
 			FREEMEM(state, GetMemoryChunkSpace(state->memtuples_buffer_1[i].features_v));
 			pfree(state->memtuples_buffer_1[i].features_v);
+			// elog(INFO, "pfree %d features_v", i);
 		}
 		if (state->memtuples_buffer_2[i].features_v != NULL) {
 			FREEMEM(state, GetMemoryChunkSpace(state->memtuples_buffer_2[i].features_v));
@@ -666,12 +681,23 @@ void fast_transfer_slot_to_sgd_tuple (
 	else {
 		//sgd_tuple->features = v;
 		if (sort_tuple->features_v == NULL) {
-			sort_tuple->features_v = (double *)palloc(n_features * sizeof(double));
+			sort_tuple->features_v = (double *)palloc0(n_features * sizeof(double));
 			USEMEM(state, GetMemoryChunkSpace(sort_tuple->features_v));
 		}
+		// Assert(v_num == n_features);
 		memcpy(sort_tuple->features_v, v, v_num * sizeof(double));
 	}
-	
+
+
+	// for debug
+	// Datum did_dat = slot->tts_values[0];
+	// sort_tuple->did = DatumGetInt32(did_dat);
+
+	// if (sort_tuple->did == 309482) {
+	// 	elog(INFO, "After parsing: %d, {%f, %f, %f, %f}, %d", sort_tuple->did, sort_tuple->features_v[0], 
+	// 	sort_tuple->features_v[1], sort_tuple->features_v[2], sort_tuple->features_v[3], sort_tuple->class_label);
+	// }
+
 }
 
 bool
@@ -682,6 +708,13 @@ puttupleslot_into_buffer(Tuplesortstate *state, TupleTableSlot *slot) {
 	if (!TupIsNull(slot)) {
 		fast_transfer_slot_to_sgd_tuple(state, slot, &state->write_buffer[state->put_index]);
 		state->write_buffer[state->put_index].isnull = false;
+
+
+		// if (state->write_buffer[state->put_index].did == 309482) {
+		// 	SortTuple t = state->write_buffer[state->put_index];
+		// 	elog(INFO, "into_buffer: %d, {%f, %f, %f, %f}, %d", t.did, t.features_v[0], 
+		// 	t.features_v[1], t.features_v[2], t.features_v[3], t.class_label);
+		// }
 
 		++state->memtupcount; // only counts non-empty tuples
 	}
@@ -944,7 +977,9 @@ tupleshufflesort_begin_common(int workMem)
 	*/
 
 	state->memtupsize = set_buffer_tuple_num;
-
+	Assert(state->memtuples_buffer_1 == NULL);
+	Assert(state->memtuples_buffer_2 == NULL);
+	// elog(INFO, "Begin to allocate buffers !!!");
 	state->memtuples_buffer_1 = (SortTuple *) palloc0(state->memtupsize * sizeof(SortTuple));
 	state->memtuples_buffer_2 = (SortTuple *) palloc0(state->memtupsize * sizeof(SortTuple));
 
@@ -967,6 +1002,7 @@ tupleshufflesort_begin_common(int workMem)
 	for (i = 0; i < state->memtupsize; i++) {
 		SortTuple null_tuple;
 		null_tuple.isnull = true;
+		null_tuple.features_v = NULL;
 
 		state->memtuples_buffer_1[i] = null_tuple;
 		state->memtuples_buffer_2[i] = null_tuple;
@@ -1390,6 +1426,23 @@ tupleshufflesort_gettupleslot(Tuplesortstate *state, TupleTableSlot *slot)
 		slot->tts_nvalid = 0;
 		slot->features_v = stup.features_v;
 		slot->label = stup.class_label;
+
+		// for debug
+		// slot->did = stup.did;
+
+		// if (slot->did == 309482) {
+		// 	double a0 = slot->features_v[0] - 0.127257;
+		// 	double a1 = slot->features_v[1] + 1.051316;
+		// 	if (a0 < 0)
+		// 		a0 = a0 * -1;
+		// 	if (a1 < 0)
+		// 		a1 = a1 * -1;
+
+		// 	Assert(a0 <= 0.000002);
+		// 	Assert(a1 <= 0.000002);
+		// 	// elog(INFO, "%d, {%f, %f, %f, %f}, %d", slot->did, slot->features_v[0], 
+		// 	// 	slot->features_v[1], slot->features_v[2], slot->features_v[3], slot->label);
+		// }
 
 		// if (stup.features == NULL) {
 		// 	elog(INFO, "[Read thread] get stup.features == NULL, fetch_index = %d", state->fetch_index);

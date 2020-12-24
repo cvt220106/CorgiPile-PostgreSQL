@@ -239,7 +239,6 @@ compute_tuple_gradient_loss_SVM(SGDTuple* tp, Model* model, SGDBatchState* batch
     double ywx = y * wx;
 
     if (1 - ywx > 0) {
-		int i;
         for (i = 0; i < n; i++)
 			batchstate->gradients[i] = batchstate->gradients[i] - y * x[i];
     }
@@ -335,6 +334,7 @@ transfer_slot_to_sgd_tuple_getattr (
 	/* double* v => double* features */
 	double* features = sgd_tuple->features;
 	int n_features = sgd_tupledesc->n_features;
+	
 	// if sparse dataset
 	if (k_col >= 0) {
 		/* k Datum array => int* k */
@@ -645,6 +645,8 @@ ExecLimit(LimitState *node)
 	clock_t comp_start, comp_finish;
 	double comp_time = 0;
 
+	// for debug
+	// FILE* fp = fopen("/home/lijie/did.txt", "w");
 	// iterations
 	int i;
 	for (i = 1; i <= iter_num; i++) {
@@ -699,6 +701,13 @@ ExecLimit(LimitState *node)
 			// parse_start = clock();
 			sgd_tuple->features = slot->features_v;
 			sgd_tuple->class_label = slot->label;
+
+
+			// for debug 
+			// if (i == 1)
+			// 	fprintf(fp, "%d, {%f, %f, %f, %f}, %d\n", slot->did, 
+			// 		sgd_tuple->features[0], sgd_tuple->features[1], sgd_tuple->features[2], sgd_tuple->features[3],
+			// 		sgd_tuple->class_label);
 			//parse_finish = clock();
 			//parse_time += (double)(parse_finish - parse_start) / CLOCKS_PER_SEC;    
 
@@ -749,6 +758,10 @@ ExecLimit(LimitState *node)
 	
 	}
 		
+
+	// for debug
+	// fclose(fp);
+
 	node->sgd_done = true;
 	SO1_printf("ExecSGD: %s\n", "Performing SGD done");
 

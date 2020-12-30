@@ -220,7 +220,7 @@ void* write_thread_run(SortState *node) {
 
         if (write_buffer_full || TupIsNull(tuple_slot)) {
 			//elog(INFO, "[Write thread] write_buffer_full = %d, tuple_slot == null? %d", write_buffer_full, TupIsNull(tuple_slot));
-            tupleshufflesort_performshuffle(state); // the last tuple can be null
+			tupleshufflesort_performshuffle(state); // the last tuple can be null
             //elog(INFO, "[Write thread] Finish tupleshufflesort_performshuffle(state);");
 			signal_buffer_full(node);
 			//elog(INFO, "[write thread] Finish signal_buffer_full(node);");

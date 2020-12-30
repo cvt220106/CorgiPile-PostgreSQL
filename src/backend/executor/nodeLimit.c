@@ -43,7 +43,8 @@ char* set_model_name = DEFAULT_MODEL_NAME;
 int table_page_number = 0;
 
 // char* table_name = "dflife";
-char* set_table_name = "forest";
+// char* set_table_name = "forest";
+char* set_table_name = "higgs_1m";
 
 bool set_run_test = false;
 
@@ -147,6 +148,12 @@ static SGDTupleDesc* init_SGDTupleDesc(int n_features) {
 	}
 	else if (strcmp(set_table_name, "forest") == 0) {
 		/* for forest */
+		sgd_tupledesc->k_col = -1; // from 0
+		sgd_tupledesc->v_col = 1;
+		sgd_tupledesc->label_col = 2;
+	}
+	else if (strcmp(set_table_name, "higgs_1m") == 0) {
+		/* for higgs_1m */
 		sgd_tupledesc->k_col = -1; // from 0
 		sgd_tupledesc->v_col = 1;
 		sgd_tupledesc->label_col = 2;
@@ -849,7 +856,7 @@ ExecInitLimit(Limit *node, EState *estate, int eflags)
 	//
 	const char* work_mem_str = GetConfigOption("work_mem", false, false);
 	elog(INFO, "============== Begin Training on %s Using %s Model ==============", set_table_name, set_model_name);
-	// elog(INFO, "[Param] model_name = %s", set_model_name);
+	elog(INFO, "[Param] model_name = %s", set_model_name);
 	elog(INFO, "[Param] run_test = %d", set_run_test);
 	elog(INFO, "[Param] work_mem = %s KB", work_mem_str);
 	elog(INFO, "[Param] block_page_num = %d pages", set_block_page_num);
@@ -876,7 +883,9 @@ ExecInitLimit(Limit *node, EState *estate, int eflags)
 	else if (strcmp(set_table_name, "forest") == 0)
 		// for forest
    	 	n_features = 54;
-    
+    else if (strcmp(set_table_name, "higgs_1m") == 0)
+		// for higgs_1m
+   	 	n_features = 28;
 	
 
     sgdstate->model = init_model(n_features);

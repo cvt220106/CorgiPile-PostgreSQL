@@ -1228,11 +1228,18 @@ tupleshufflesort_puttupleslot(Tuplesortstate *state, TupleTableSlot *slot)
 void
 tupleshufflesort_performshuffle(Tuplesortstate *state) 
 {
+	// clock_t start, finish;    
+	// start = clock(); 
+	// int n = state->memtupcount;
 	//elog(INFO, "[Write thread] perform_shuffle: state->memtupcount = %d", state->memtupcount);
 	if (state->memtupcount > 1) {
 		shuffle_tuple(state->write_buffer, state->memtupcount);
 		state->memtupcount = 0;
 	}
+
+	// finish = clock();    
+   	// double duration = (double)(finish - start) / CLOCKS_PER_SEC;    
+   	// elog(INFO, "[shuffle %d tuples] %f seconds\n", n, duration);      
 }
 
 /*

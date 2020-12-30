@@ -8,9 +8,9 @@
 #define DEFAULT_BUFFER_BLOCK_NUM 1.0
 
 
-#define DEFAULT_BATCH_SIZE  10000
+#define DEFAULT_BATCH_SIZE  1
 #define DEFAULT_ITER_NUM  10
-#define DEFAULT_LEARNING_RATE	0.8
+#define DEFAULT_LEARNING_RATE	0.08
 #define DEFAULT_MODEL_NAME "LR"
 #define DEFAULT_TABLE_NAME "forest"
 
@@ -59,5 +59,12 @@ extern int table_page_number;
 extern bool set_run_test;
 
 extern SGDTupleDesc* sgd_tupledesc;
+
+
+
+
+
+
+
 
 #endif   

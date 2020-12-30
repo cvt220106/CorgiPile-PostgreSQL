@@ -679,13 +679,14 @@ void fast_transfer_slot_to_sgd_tuple (
 	}
 	
 	else {
-		//sgd_tuple->features = v;
+		// sgd_tuple->features_v = v;
 		if (sort_tuple->features_v == NULL) {
 			sort_tuple->features_v = (double *)palloc0(n_features * sizeof(double));
 			USEMEM(state, GetMemoryChunkSpace(sort_tuple->features_v));
 		}
 		// Assert(v_num == n_features);
 		memcpy(sort_tuple->features_v, v, v_num * sizeof(double));
+		
 	}
 
 

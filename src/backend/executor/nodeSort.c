@@ -49,6 +49,8 @@ pthread_cond_t swap_finished_cond;
 
 
 void wait_buffer_full(SortState *node) {
+	// clock_t start = clock(); 
+
     pthread_mutex_lock(&buffer_mutex);
     while (!node->buffer_full_signal) {
         //printf("\n[read thread] wait_buffer_full()\n");
@@ -56,6 +58,10 @@ void wait_buffer_full(SortState *node) {
     }
     node->buffer_full_signal = false;
     pthread_mutex_unlock(&buffer_mutex);
+
+	// clock_t finish = clock();    
+   	// double duration = (double)(finish - start) / CLOCKS_PER_SEC;    
+   	// elog(INFO, "[wait_buffer_full] %f seconds", duration);  
 }
 
 void signal_buffer_full(SortState *node) {
@@ -67,7 +73,7 @@ void signal_buffer_full(SortState *node) {
 }
 
 void wait_swap_finished(SortState *node) {
-    
+    // clock_t start = clock(); 
     pthread_mutex_lock(&swap_mutex);
     while (!node->swap_finished_signal) {
         //printf("\n[write thread] wait_swap_finished()\n");
@@ -75,6 +81,10 @@ void wait_swap_finished(SortState *node) {
     }
     node->swap_finished_signal = false;
     pthread_mutex_unlock(&swap_mutex);
+
+	// clock_t finish = clock();    
+   	// double duration = (double)(finish - start) / CLOCKS_PER_SEC;    
+   	// elog(INFO, "[wait_swap] %f seconds", duration);  
 }
 
 void signal_swap_finished(SortState *node) {
@@ -211,6 +221,8 @@ void* write_thread_run(SortState *node) {
 	PlanState  *outerNode = outerPlanState(node);
 	Tuplesortstate* state = node->tuplesortstate;
 
+	// clock_t start = clock(); 
+
     while(true) {
 		
         TupleTableSlot* tuple_slot = ExecProcNode(outerNode);
@@ -219,9 +231,12 @@ void* write_thread_run(SortState *node) {
         bool write_buffer_full = tupleshufflesort_puttupleslot(state, tuple_slot);
 
         if (write_buffer_full || TupIsNull(tuple_slot)) {
-			//elog(INFO, "[Write thread] write_buffer_full = %d, tuple_slot == null? %d", write_buffer_full, TupIsNull(tuple_slot));
 			tupleshufflesort_performshuffle(state); // the last tuple can be null
-            //elog(INFO, "[Write thread] Finish tupleshufflesort_performshuffle(state);");
+            // clock_t finish = clock();    
+   			// double duration = (double)(finish - start) / CLOCKS_PER_SEC;    
+   			// elog(INFO, "[write_full] %f seconds", duration);  
+			// start = finish;
+
 			signal_buffer_full(node);
 			//elog(INFO, "[write thread] Finish signal_buffer_full(node);");
             if (!TupIsNull(tuple_slot))

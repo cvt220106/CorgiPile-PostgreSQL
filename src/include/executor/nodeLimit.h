@@ -64,6 +64,4 @@ typedef struct TestState
 // extern void perform_SGD(Model *model, SGDTuple* sgd_tuple, SGDBatchState* batchstate, int i);
 // extern void transfer_slot_to_sgd_tuple(TupleTableSlot* slot, SGDTuple* sgd_tuple, SGDTupleDesc* sgd_tupledesc);
 
-
-
 #endif   /* NODELIMIT_H */

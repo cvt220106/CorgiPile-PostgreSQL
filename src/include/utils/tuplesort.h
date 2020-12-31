@@ -79,6 +79,9 @@ extern void tupleshufflesort_rescan(Tuplesortstate *state);
 extern void tupleshufflesort_markpos(Tuplesortstate *state);
 extern void tupleshufflesort_restorepos(Tuplesortstate *state);
 
+extern SortTuple* tupleshufflesort_getreadbuffer(Tuplesortstate *state);
+extern int tupleshufflesort_getbuffersize(Tuplesortstate *state);
+
 
 
 

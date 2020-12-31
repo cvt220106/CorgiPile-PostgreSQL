@@ -265,6 +265,7 @@ void* write_thread_run(SortState *node) {
  *		  -- the outer child is prepared to return the first tuple.
  * ----------------------------------------------------------------
  */
+/*
 TupleTableSlot *
 ExecSort(SortState *node)
 {
@@ -273,10 +274,6 @@ ExecSort(SortState *node)
 	Tuplesortstate *state = node->tuplesortstate;
 	TupleTableSlot *slot;
 
-	/*
-	 * If first time through, read all tuples from outer plan and pass them to
-	 * tuplesort.c. Subsequent calls just fetch tuples from tuplesort.
-	 */
 	if (state == NULL) {
 		// build a new tuplesortstate with new buffer
 		init_Tuplesortstate(node);
@@ -308,13 +305,6 @@ ExecSort(SortState *node)
 
 	slot = node->ss.ps.ps_ResultTupleSlot;
 
-	/*
-	if (fetch_index < buffer_size) {
-        int tuple = read_buffer[fetch_index++];
-        // tuple can be null
-        return tuple;
-    }
-	*/
 	if (tupleshufflesort_has_tuple_in_buffer(state)) {
 		// slot can be null
 		// elog(INFO, "[Read thread] Finish tupleshufflesort_has_tuple_in_buffer(state);");	
@@ -337,6 +327,55 @@ ExecSort(SortState *node)
 		return slot;
     }  
 	
+}
+*/
+
+
+TupleTableSlot *
+ExecSort(SortState *node)
+{
+	// EState	   *estate = node->ss.ps.state;
+	// ScanDirection dir = estate->es_direction; // going to be set to ShuffleScanDirection
+	Tuplesortstate *state = node->tuplesortstate;
+	TupleTableSlot *slot;
+
+	if (state == NULL) {
+		// build a new tuplesortstate with new buffer
+		init_Tuplesortstate(node);
+		// reset the tuplesortstate index, etc.
+		reset_sort_state(node);
+		// node->rescan_count = 0;
+		state = node->tuplesortstate;
+		// elog(INFO, "state == null, reset_sort_state");
+
+		Assert(pthread_mutex_init(&buffer_mutex, NULL) == 0);
+		Assert(pthread_mutex_init(&swap_mutex, NULL) == 0);
+		Assert(pthread_cond_init(&buffer_full_cond, NULL) == 0);
+		Assert(pthread_cond_init(&swap_finished_cond, NULL) == 0);
+	}
+
+	if (node->write_thread_not_started) {
+        start_write_thread(node);
+        node->write_thread_not_started = false;
+    }
+
+	wait_buffer_full(node);
+
+	if (tupleshufflesort_is_read_buffer_null(state))
+		tupleshufflesort_init_buffer(state);
+	else
+		tupleshufflesort_swapbuffer(state);
+
+	signal_swap_finished(node);
+
+	slot = node->ss.ps.ps_ResultTupleSlot;
+
+	slot->read_buffer = tupleshufflesort_getreadbuffer(state);
+	slot->tts_isempty = false;
+	slot->tts_shouldFree = false;
+	slot->read_buffer_size = tupleshufflesort_getbuffersize(state);
+
+	return slot;
 }
 
 

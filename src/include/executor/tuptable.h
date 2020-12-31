@@ -17,6 +17,8 @@
 #include "access/htup.h"
 #include "storage/buf.h"
 
+#include "utils/sgdmodel.h"
+
 /*----------
  * The executor stores tuples in a "tuple table" which is a List of
  * independent TupleTableSlots.  There are several cases we need to handle:
@@ -130,6 +132,8 @@ typedef struct TupleTableSlot
 	double* features_k;
 	double* features_v;
 	int label;
+	SortTuple* read_buffer;
+	int read_buffer_size;
 
 	// for debug
 	int did;

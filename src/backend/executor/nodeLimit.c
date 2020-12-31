@@ -868,81 +868,90 @@ ExecLimit(LimitState *node)
 	int i;
 	for (i = 1; i <= iter_num; i++) {
 		iter_start = clock();
-		is_running_test = false;
+		is_running_test = true;
 		int ith_tuple = 0;
+
+		bool end_of_reach = false;
+
 		while(true) {
 			// get a tuple from ShuffleSortNode
 			slot = ExecProcNode(outerNode);
 
-			if (TupIsNull(slot)) {
-				
-				// perform_SGD(node->model, NULL, batchstate, ith_tuple);
+			SortTuple *read_buffer = slot->read_buffer;
+			int buffer_size = slot->read_buffer_size;
 
-				if (i == 1) {
-					double avg_page_tuple_num = (double) model->tuple_num / table_page_number;
-					elog(INFO, "[Computed Param] table_tuple_num = %d, buffer_block_num = %.2f", 
-						model->tuple_num, (double) set_buffer_tuple_num / (set_block_page_num * avg_page_tuple_num));
-				}
+			int j;
+			for (j = 0; j < buffer_size; ++j) {
+				if (read_buffer[j].isnull) {
+					// perform_SGD(node->model, NULL, batchstate, ith_tuple);
 
-				// iter_finish = clock();
-				// iter_exec_time = (double)(iter_finish - iter_start) / CLOCKS_PER_SEC; 
-				// double read_time = iter_exec_time - parse_time - comp_time;
-				// elog(INFO, "[Iter %2d] Loss = %.2f, exec_t = %.2fs, read_t = %.2fs, parse_t = %.2fs, comp_t = %.2fs", 
-				// 			i, model->total_loss, iter_exec_time, read_time, parse_time, comp_time);
-
-				/*
-				if (i == iter_num) { // finish
-					if (set_run_test == false) {
-						free_SGDBatchState(batchstate);
-						free_SGDTuple(sgd_tuple);
-						free_SGDTupleDesc(sgd_tupledesc);
-					}  	
-					else {
-						ExecReScan(outerNode);
+					if (i == 1) {
+						double avg_page_tuple_num = (double) model->tuple_num / table_page_number;
+						elog(INFO, "[Computed Param] table_tuple_num = %d, buffer_block_num = %.2f", 
+							model->tuple_num, 
+							(double) set_buffer_tuple_num / (set_block_page_num * avg_page_tuple_num));
 					}
-					break;	
-				}
-				else { // for the next iteration
-					model->total_loss = 0;
-					parse_time = 0;
-					comp_time = 0;
-					clear_SGDBatchState(batchstate, model->n_features);
+
+					// iter_finish = clock();
+					// iter_exec_time = (double)(iter_finish - iter_start) / CLOCKS_PER_SEC; 
+					// double read_time = iter_exec_time - parse_time - comp_time;
+					// elog(INFO, "[Iter %2d] Loss = %.2f, exec_t = %.2fs, read_t = %.2fs, parse_t = %.2fs, comp_t = %.2fs", 
+					// 			i, model->total_loss, iter_exec_time, read_time, parse_time, comp_time);
+
+					/*
+					if (i == iter_num) { // finish
+						if (set_run_test == false) {
+							free_SGDBatchState(batchstate);
+							free_SGDTuple(sgd_tuple);
+							free_SGDTupleDesc(sgd_tupledesc);
+						}  	
+						else {
+							ExecReScan(outerNode);
+						}
+						break;	
+					}
+					else { // for the next iteration
+						model->total_loss = 0;
+						parse_time = 0;
+						comp_time = 0;
+						clear_SGDBatchState(batchstate, model->n_features);
+						ExecReScan(outerNode);	
+						break;
+					}
+					*/
+					end_of_reach = true;
 					ExecReScan(outerNode);	
 					break;
 				}
-				*/
-				ExecReScan(outerNode);	
-				break;
+
+				sgd_tuple->features = read_buffer[j].features_v;
+				sgd_tuple->class_label = read_buffer[j].class_label;
+
+
+				// for debug 
+				// if (i == 1)
+				// 	fprintf(fp, "%d, {%f, %f, %f, %f}, %d\n", slot->did, 
+				// 		sgd_tuple->features[0], sgd_tuple->features[1], sgd_tuple->features[2], sgd_tuple->features[3],
+				// 		sgd_tuple->class_label);
+				//parse_finish = clock();
+				//parse_time += (double)(parse_finish - parse_start) / CLOCKS_PER_SEC;    
+
+				//comp_start = clock();
+				// perform_SGD(node->model, sgd_tuple, batchstate, ith_tuple);
+				compute_tuple_gradient_LR(sgd_tuple, model, NULL);
+				//comp_finish = clock();
+				//comp_time += (double)(comp_finish - comp_start) / CLOCKS_PER_SEC;
+
+				// ith_tuple = (ith_tuple + 1) % batch_size;
+
+				if (i == 1)
+					model->tuple_num += 1;
 			}
-
-			// parse_start = clock();
-			// fast_transfer_slot_to_sgd_tuple(slot, sgd_tuple, sgd_tupledesc);
-			// parse_finish = clock();
-			// parse_time += (double)(parse_finish - parse_start) / CLOCKS_PER_SEC;    
 			
-			// parse_start = clock();
-			sgd_tuple->features = slot->features_v;
-			sgd_tuple->class_label = slot->label;
+			
+			if (end_of_reach)
+				break;
 
-
-			// for debug 
-			// if (i == 1)
-			// 	fprintf(fp, "%d, {%f, %f, %f, %f}, %d\n", slot->did, 
-			// 		sgd_tuple->features[0], sgd_tuple->features[1], sgd_tuple->features[2], sgd_tuple->features[3],
-			// 		sgd_tuple->class_label);
-			//parse_finish = clock();
-			//parse_time += (double)(parse_finish - parse_start) / CLOCKS_PER_SEC;    
-
-			//comp_start = clock();
-			// perform_SGD(node->model, sgd_tuple, batchstate, ith_tuple);
-			compute_tuple_gradient_LR(sgd_tuple, model, NULL);
-			//comp_finish = clock();
-			//comp_time += (double)(comp_finish - comp_start) / CLOCKS_PER_SEC;
-
-            // ith_tuple = (ith_tuple + 1) % batch_size;
-
-			if (i == 1)
-				model->tuple_num += 1;
 		}
 
 		// decay the learning rate with 0.95^iter_num
@@ -952,44 +961,51 @@ ExecLimit(LimitState *node)
 		// compute the loss 
 		// 
 		is_running_test = true;
+		end_of_reach = false;
 		while(true) {
 			slot = ExecProcNode(outerNode);
-				
-			if (TupIsNull(slot)) {
-				// test_state->test_accuracy = (double) test_state->right_count / model->tuple_num;
-					
-				// elog(INFO, "[Iter %2d][Test] test_total_loss = %.2f, test_accuracy = %.2f", 
-				// 	i, test_state->test_total_loss, test_state->test_accuracy);
+			
+			SortTuple *read_buffer = slot->read_buffer;
+			int buffer_size = slot->read_buffer_size;
 
-				iter_finish = clock();
-				iter_exec_time = (double)(iter_finish - iter_start) / CLOCKS_PER_SEC; 
-				double read_time = iter_exec_time - parse_time - comp_time;
-				elog(INFO, "[Iter %2d] Loss = %.2f, exec_t = %.2fs, read_t = %.2fs, parse_t = %.2fs, comp_t = %.2fs", 
-						i, model->total_loss, iter_exec_time, read_time, parse_time, comp_time);
-		
-				model->total_loss = 0;
+			int j;
+			for (j = 0; j < buffer_size; ++j) {
+				if (read_buffer[j].isnull) {
 
-				if (i == iter_num) { // finish
-					free_SGDBatchState(batchstate);
-					free_SGDTuple(sgd_tuple);
-					free_SGDTupleDesc(sgd_tupledesc);
-					free_TestState(test_state);
-					break;	
+					iter_finish = clock();
+					iter_exec_time = (double)(iter_finish - iter_start) / CLOCKS_PER_SEC; 
+					double read_time = iter_exec_time - parse_time - comp_time;
+					elog(INFO, "[Iter %2d] Loss = %.2f, exec_t = %.2fs, read_t = %.2fs, parse_t = %.2fs, comp_t = %.2fs", 
+							i, model->total_loss, iter_exec_time, read_time, parse_time, comp_time);
+			
+					model->total_loss = 0;
+					end_of_reach = true;
+					if (i == iter_num) { // finish
+						free_SGDBatchState(batchstate);
+						free_SGDTuple(sgd_tuple);
+						free_SGDTupleDesc(sgd_tupledesc);
+						free_TestState(test_state);
+						break;	
+					}
+					else { // for the next iteration
+						// clear_TestState(test_state);
+						ExecReScan(outerNode);	
+						break;
+					}
 				}
-				else { // for the next iteration
-					// clear_TestState(test_state);
-					ExecReScan(outerNode);	
-					break;
-				}
+
+				// fast_transfer_slot_to_sgd_tuple(slot, sgd_tuple, sgd_tupledesc);
+				sgd_tuple->features = read_buffer[j].features_v;
+				sgd_tuple->class_label = read_buffer[j].class_label;
+				// compute_tuple_accuracy(node->model, sgd_tuple, test_state);
+				compute_tuple_loss_LR(sgd_tuple, model, NULL);
 			}
-			// fast_transfer_slot_to_sgd_tuple(slot, sgd_tuple, sgd_tupledesc);
-			sgd_tuple->features = slot->features_v;
-			sgd_tuple->class_label = slot->label;
-			// compute_tuple_accuracy(node->model, sgd_tuple, test_state);
-			compute_tuple_loss_LR(sgd_tuple, model, NULL);
+
+			if (end_of_reach)
+				break;
+			
 		}
 
-		
 	}
 		
 

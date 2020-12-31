@@ -10,9 +10,9 @@
 
 #define DEFAULT_BATCH_SIZE  1
 #define DEFAULT_ITER_NUM  10
-#define DEFAULT_LEARNING_RATE	0.08
+#define DEFAULT_LEARNING_RATE	0.1
 #define DEFAULT_MODEL_NAME "LR"
-#define DEFAULT_TABLE_NAME ""
+#define DEFAULT_TABLE_NAME "higgs_1m"
 
 
 typedef struct Model {
@@ -38,6 +38,25 @@ typedef struct SGDTupleDesc
 	// Datum* values;
 	// bool* isnulls;
 } SGDTupleDesc;
+
+
+typedef struct
+{
+	bool	 isnull;
+	double*	 features_k;		/* features of a tuple, n_dim */	
+	double*  features_v;
+    int		 class_label;	/* the class label of a tuple, -1 if there is not any label */
+
+	// the following variable are not used
+	void	   *tuple;			/* the tuple proper */
+	// can be changed to feature/label Datum
+	Datum		datum1;			/* value of first key column */
+	bool		isnull1;		/* is first key column NULL? */
+	int			tupindex;		/* see notes above */
+
+	// for debug
+	// int 		did;
+} SortTuple;
 
 // guc variables
 // can be set via "SET VAR = XX" in the psql console

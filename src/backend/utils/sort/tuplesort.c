@@ -165,23 +165,7 @@ double set_buffer_block_num = DEFAULT_BUFFER_BLOCK_NUM;
  * from the same tape in the case of pre-read entries.  tupindex goes unused
  * if the sort occurs entirely in memory.
  */
-typedef struct
-{
-	bool	 isnull;
-	double*	 features_k;		/* features of a tuple, n_dim */	
-	double*  features_v;
-    int		 class_label;	/* the class label of a tuple, -1 if there is not any label */
 
-	// the following variable are not used
-	void	   *tuple;			/* the tuple proper */
-	// can be changed to feature/label Datum
-	Datum		datum1;			/* value of first key column */
-	bool		isnull1;		/* is first key column NULL? */
-	int			tupindex;		/* see notes above */
-
-	// for debug
-	// int 		did;
-} SortTuple;
 
 
 /*
@@ -477,7 +461,9 @@ static bool puttupleslot_into_buffer(Tuplesortstate *state, TupleTableSlot *slot
 static int my_parse_array_no_copy(struct varlena* input, int typesize, char** output);
 static void fast_transfer_slot_to_sgd_tuple(Tuplesortstate *state, TupleTableSlot* slot, SortTuple* sort_tuple);
 
-
+// static SortTuple* tupleshufflesort_getreadbuffer(Tuplesortstate *state);
+// static int tupleshufflesort_getbuffersize(Tuplesortstate *state);
+// static void tupleshufflesort_gettupleslot(Tuplesortstate *state, TupleTableSlot *slot);
 // static void shuffle_tuple(SortTuple *a, size_t n);
 // static void clear_tupleshufflesort_state(Tuplesortstate* tuplesortstate);
 // bool is_shuffle_buffer_emtpy(Tuplesortstate *state);
@@ -1312,6 +1298,8 @@ tupleshufflesort_gettuple_common(Tuplesortstate *state)
 	return &(state->read_buffer[state->fetch_index++]);
 }
 
+
+
 /*
 static bool
 tupleshufflesort_gettuple_common(Tuplesortstate *state, SortTuple *stup)
@@ -1412,6 +1400,16 @@ tupleshufflesort_gettupleslot(Tuplesortstate *state, TupleTableSlot *slot)
 	}
 }
 */
+
+
+SortTuple* tupleshufflesort_getreadbuffer(Tuplesortstate *state) {
+	return state->read_buffer;
+}
+
+
+int tupleshufflesort_getbuffersize(Tuplesortstate *state) {
+	return state->memtupsize;
+}
 
 void
 tupleshufflesort_gettupleslot(Tuplesortstate *state, TupleTableSlot *slot)

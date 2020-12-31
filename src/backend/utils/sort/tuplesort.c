@@ -470,7 +470,7 @@ static void copytup_heap(Tuplesortstate *state, SortTuple *stup, void *tup);
 static void shuffle_tuple(SortTuple *a, size_t n);
 static bool puttuple_into_buffer(Tuplesortstate *state, SortTuple *tuple);
 static Tuplesortstate * tupleshufflesort_begin_common(int workMem);
-static SortTuple tupleshufflesort_gettuple_common(Tuplesortstate *state);
+static SortTuple* tupleshufflesort_gettuple_common(Tuplesortstate *state);
 static void copytup_heap_original(Tuplesortstate *state, SortTuple *stup, void *tup);
 
 static bool puttupleslot_into_buffer(Tuplesortstate *state, TupleTableSlot *slot);
@@ -516,9 +516,6 @@ void
 shuffle_tuple(SortTuple *a, size_t n)
 {
 	srand(time(0) + rand());
-
-	CHECK_FOR_INTERRUPTS();
-	
 
 	int i;
 
@@ -1234,7 +1231,8 @@ tupleshufflesort_performshuffle(Tuplesortstate *state)
 	// int n = state->memtupcount;
 	//elog(INFO, "[Write thread] perform_shuffle: state->memtupcount = %d", state->memtupcount);
 	if (state->memtupcount > 1) {
-		shuffle_tuple(state->write_buffer, state->memtupcount);
+		if (is_running_test == false)
+			shuffle_tuple(state->write_buffer, state->memtupcount);
 		state->memtupcount = 0;
 	}
 
@@ -1308,10 +1306,10 @@ tupleshufflesort_performshuffle(TupleShuffleSortState *state)
  * direction into *stup.  Returns FALSE if no more tuples.
  * If *should_free is set, the caller must pfree stup.tuple when done with it.
  */
-SortTuple
+SortTuple*
 tupleshufflesort_gettuple_common(Tuplesortstate *state)
 {
-	return state->read_buffer[state->fetch_index++];
+	return &(state->read_buffer[state->fetch_index++]);
 }
 
 /*
@@ -1421,19 +1419,19 @@ tupleshufflesort_gettupleslot(Tuplesortstate *state, TupleTableSlot *slot)
 	//MemoryContext oldcontext = MemoryContextSwitchTo(state->shufflesortcontext);
 	// bool should_free = false;
 	
-	SortTuple	stup = tupleshufflesort_gettuple_common(state);
+	SortTuple*	stup = tupleshufflesort_gettuple_common(state);
 	// elog(INFO, "[Read thread] >> Finish tupleshufflesort_gettuple_common(state, &stup); stup = %x", stup);
 
-	if (stup.isnull == false)
+	if (stup->isnull == false)
 	{
 		//slot->tts_tuple = stup.tuple;
 		//slot->tts_values = stup.tts_values;
 		slot->tts_isempty = false;
 		slot->tts_shouldFree = false;
 	
-		slot->tts_nvalid = 0;
-		slot->features_v = stup.features_v;
-		slot->label = stup.class_label;
+		// slot->tts_nvalid = 0;
+		slot->features_v = stup->features_v;
+		slot->label = stup->class_label;
 
 		// for debug
 		// slot->did = stup.did;

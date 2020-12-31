@@ -12,7 +12,7 @@
 #define DEFAULT_ITER_NUM  10
 #define DEFAULT_LEARNING_RATE	0.08
 #define DEFAULT_MODEL_NAME "LR"
-#define DEFAULT_TABLE_NAME "forest"
+#define DEFAULT_TABLE_NAME ""
 
 
 typedef struct Model {
@@ -59,6 +59,8 @@ extern int table_page_number;
 extern bool set_run_test;
 
 extern SGDTupleDesc* sgd_tupledesc;
+
+extern bool is_running_test;
 
 
 

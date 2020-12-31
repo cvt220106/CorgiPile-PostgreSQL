@@ -47,6 +47,7 @@ int table_page_number = 0;
 char* set_table_name = "higgs_1m";
 
 bool set_run_test = false;
+bool is_running_test = false;
 
 SGDTupleDesc* sgd_tupledesc; // also used in nodeSort.c for parsing tuple_slot to double* features
 
@@ -117,7 +118,7 @@ add_c_dss(double* x, const int* k, const int sparseSize, const double c) {
 }
 
 // from bismarck
-extern inline void
+inline void
 add_and_scale_dss(double* x, const int* k, const double* v, const int sparseSize, const double c) {
   int i;
   for(i = sparseSize - 1; i >= 0; i--) {
@@ -323,7 +324,7 @@ static void free_TestState(TestState* test_state) {
     pfree(test_state);
 }
 
-static void
+inline void
 compute_tuple_gradient_LR(SGDTuple* tp, Model* model, SGDBatchState* batchstate)
 {
     double y = tp->class_label;
@@ -345,7 +346,7 @@ compute_tuple_gradient_LR(SGDTuple* tp, Model* model, SGDBatchState* batchstate)
 }
 
 
-static void
+inline void
 compute_tuple_loss_LR(SGDTuple* tp, Model* model, SGDBatchState* batchstate)
 {
 	double* x = tp->features;
@@ -867,7 +868,7 @@ ExecLimit(LimitState *node)
 	int i;
 	for (i = 1; i <= iter_num; i++) {
 		iter_start = clock();
-
+		is_running_test = false;
 		int ith_tuple = 0;
 		while(true) {
 			// get a tuple from ShuffleSortNode
@@ -950,6 +951,7 @@ ExecLimit(LimitState *node)
 		// 
 		// compute the loss 
 		// 
+		is_running_test = true;
 		while(true) {
 			slot = ExecProcNode(outerNode);
 				

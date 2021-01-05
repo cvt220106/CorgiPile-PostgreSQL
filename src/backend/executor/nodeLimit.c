@@ -359,7 +359,7 @@ compute_tuple_gradient_LR(SortTuple* tp, Model* model, SGDBatchState* batchstate
 
     // regularization
     // double u = model->mu * model->learning_rate;
-	double u = 1 * model->learning_rate;
+	double u = 0.01 * model->learning_rate;
     l1_shrink_mask_d(model->w, u, n);
 }
 

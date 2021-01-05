@@ -10,7 +10,7 @@
 
 #define DEFAULT_BATCH_SIZE  1
 #define DEFAULT_ITER_NUM  10
-#define DEFAULT_LEARNING_RATE	0.1
+#define DEFAULT_LEARNING_RATE	0.8
 #define DEFAULT_MODEL_NAME "LR"
 #define DEFAULT_TABLE_NAME "higgs_1m"
 
@@ -48,11 +48,11 @@ typedef struct
     int		 class_label;	/* the class label of a tuple, -1 if there is not any label */
 
 	// the following variable are not used
-	void	   *tuple;			/* the tuple proper */
+	//void	   *tuple;			/* the tuple proper */
 	// can be changed to feature/label Datum
-	Datum		datum1;			/* value of first key column */
-	bool		isnull1;		/* is first key column NULL? */
-	int			tupindex;		/* see notes above */
+	//Datum		datum1;			/* value of first key column */
+	//bool		isnull1;		/* is first key column NULL? */
+	//int			tupindex;		/* see notes above */
 
 	// for debug
 	// int 		did;
@@ -79,7 +79,7 @@ extern bool set_run_test;
 
 extern SGDTupleDesc* sgd_tupledesc;
 
-extern bool is_running_test;
+extern bool is_training;
 
 
 

@@ -498,7 +498,7 @@ static void fast_transfer_slot_to_sgd_tuple(Tuplesortstate *state, TupleTableSlo
 // Lijie: add begin
 // shuffle_tuple(state->memtuples, state->memtupcount, state);
 
-void
+inline void
 shuffle_tuple(SortTuple *a, size_t n)
 {
 	srand(time(0) + rand());
@@ -512,7 +512,7 @@ shuffle_tuple(SortTuple *a, size_t n)
 	// 		t.features_v[1], t.features_v[2], t.features_v[3], t.class_label);
 	// }
 
-	for (i = n - 1; i > 0; i--) {
+	for (i = n - 1; i > 0; --i) {
 		int r = rand() % (i + 1);
 		// swap(a + i, a + r);
 		SortTuple t = *(a + i);
@@ -622,31 +622,30 @@ void fast_transfer_slot_to_sgd_tuple (
 
 	//Assert(sort_tuple->features_v != NULL);
 	// store the values of slot to values/isnulls arrays
-	int k_col = sgd_tupledesc->k_col;
-	int v_col = sgd_tupledesc->v_col;
-	int label_col = sgd_tupledesc->label_col;
+	// int k_col = sgd_tupledesc->k_col;
+	// int v_col = sgd_tupledesc->v_col;
+	// int label_col = sgd_tupledesc->label_col;
 
-	int attnum = HeapTupleHeaderGetNatts(slot->tts_tuple->t_data);
-	slot_deform_tuple(slot, attnum);
+	// int attnum = HeapTupleHeaderGetNatts(slot->tts_tuple->t_data);
+	slot_deform_tuple(slot, 3);
 	
 	// e.g., features = [0.1, 0, 0.2, 0, 0, 0.3, 0, 0], class_label = -1
 	// Tuple = {10, {0, 2, 5}, {0.1, 0.2, 0.3}, -1}
-	Datum v_dat = slot->tts_values[v_col];
+	Datum v_dat = slot->tts_values[sgd_tupledesc->v_col];
 	ArrayType  *v_array = DatumGetArrayTypeP(v_dat); // Datum{0.1, 0.2, 0.3}
 	
 	double *v;
     int v_num = my_parse_array_no_copy((struct varlena*) v_array, 
             sizeof(float8), (char **) &v);
 
-	Datum label_dat = slot->tts_values[label_col];
-	int label = DatumGetInt32(label_dat);
-	sort_tuple->class_label = label;
+	Datum label_dat = slot->tts_values[sgd_tupledesc->label_col];
+	sort_tuple->class_label = DatumGetInt32(label_dat);
 
 	int n_features = sgd_tupledesc->n_features;
 	// if sparse dataset
-	if (k_col >= 0) {
+	if (sgd_tupledesc->k_col >= 0) {
 		// k Datum array => int* k 
-		Datum k_dat = slot->tts_values[k_col];
+		Datum k_dat = slot->tts_values[sgd_tupledesc->k_col];
 		ArrayType  *k_array = DatumGetArrayTypeP(k_dat);
 		int *k;
     	int k_num = my_parse_array_no_copy((struct varlena*) k_array, 
@@ -664,13 +663,18 @@ void fast_transfer_slot_to_sgd_tuple (
 	else {
 		// sgd_tuple->features_v = v;
 		if (sort_tuple->features_v == NULL) {
-			sort_tuple->features_v = (double *)palloc0(n_features * sizeof(double));
+			MemoryContext oldcontext = MemoryContextSwitchTo(state->shufflesortcontext);
+			sort_tuple->features_v = (double *)palloc(n_features * sizeof(double));
 			USEMEM(state, GetMemoryChunkSpace(sort_tuple->features_v));
+			MemoryContextSwitchTo(oldcontext);
 		}
 		// Assert(v_num == n_features);
 		memcpy(sort_tuple->features_v, v, v_num * sizeof(double));
 		
 	}
+
+	sort_tuple->isnull = false;
+
 
 
 	// for debug
@@ -686,12 +690,11 @@ void fast_transfer_slot_to_sgd_tuple (
 
 bool
 puttupleslot_into_buffer(Tuplesortstate *state, TupleTableSlot *slot) {
-	Assert(state->memtupcount < state->memtupsize);
+	// Assert(state->memtupcount < state->memtupsize);
 	bool write_buffer_full = false;
 
 	if (!TupIsNull(slot)) {
 		fast_transfer_slot_to_sgd_tuple(state, slot, &state->write_buffer[state->put_index]);
-		state->write_buffer[state->put_index].isnull = false;
 
 
 		// if (state->write_buffer[state->put_index].did == 309482) {
@@ -788,7 +791,7 @@ puttuple_into_buffer(Tuplesortstate *state, SortTuple *tuple) {
 	else {
 		// create a null SortTuple and insert it into the buffer
 		SortTuple null_sorttuple;
-		null_sorttuple.tuple = NULL;
+		//null_sorttuple.tuple = NULL;
 		state->write_buffer[state->put_index++] = null_sorttuple; 
 	}
 
@@ -964,8 +967,8 @@ tupleshufflesort_begin_common(int workMem)
 	Assert(state->memtuples_buffer_1 == NULL);
 	Assert(state->memtuples_buffer_2 == NULL);
 	// elog(INFO, "Begin to allocate buffers !!!");
-	state->memtuples_buffer_1 = (SortTuple *) palloc0(state->memtupsize * sizeof(SortTuple));
-	state->memtuples_buffer_2 = (SortTuple *) palloc0(state->memtupsize * sizeof(SortTuple));
+	state->memtuples_buffer_1 = (SortTuple *) palloc(state->memtupsize * sizeof(SortTuple));
+	state->memtuples_buffer_2 = (SortTuple *) palloc(state->memtupsize * sizeof(SortTuple));
 
 	/*
 	for (int i = 0; i < state->memtupsize; i++) {
@@ -983,7 +986,7 @@ tupleshufflesort_begin_common(int workMem)
 	}
 	*/
 	int i;
-	for (i = 0; i < state->memtupsize; i++) {
+	for (i = 0; i < state->memtupsize; ++i) {
 		SortTuple null_tuple;
 		null_tuple.isnull = true;
 		null_tuple.features_v = NULL;
@@ -1167,13 +1170,13 @@ void tupleshufflesort_swapbuffer(Tuplesortstate *state) {
 bool
 tupleshufflesort_puttupleslot(Tuplesortstate *state, TupleTableSlot *slot)
 {
-	MemoryContext oldcontext = MemoryContextSwitchTo(state->shufflesortcontext);
-	SortTuple	stup;
+	//MemoryContext oldcontext = MemoryContextSwitchTo(state->shufflesortcontext);
+	// SortTuple	stup;
 	bool write_buffer_full = false;
 
 	write_buffer_full = puttupleslot_into_buffer(state, slot);
 	
-	MemoryContextSwitchTo(oldcontext);
+	//MemoryContextSwitchTo(oldcontext);
 	
 	return write_buffer_full;
 }
@@ -1217,7 +1220,7 @@ tupleshufflesort_performshuffle(Tuplesortstate *state)
 	// int n = state->memtupcount;
 	//elog(INFO, "[Write thread] perform_shuffle: state->memtupcount = %d", state->memtupcount);
 	if (state->memtupcount > 1) {
-		if (is_running_test == false)
+		if (is_training)
 			shuffle_tuple(state->write_buffer, state->memtupcount);
 		state->memtupcount = 0;
 	}
@@ -1638,7 +1641,7 @@ copytup_heap_original(Tuplesortstate *state, SortTuple *stup, void *tup)
 
 	/* copy the tuple into sort storage */
 	tuple = ExecCopySlotMinimalTuple(slot);
-	stup->tuple = (void *) tuple;
+	//stup->tuple = (void *) tuple;
 	USEMEM(state, GetMemoryChunkSpace(tuple));
 	// /* set up first-column key value */
 	// htup.t_len = tuple->t_len + MINIMAL_TUPLE_OFFSET;
@@ -1662,7 +1665,7 @@ copytup_heap(Tuplesortstate *state, SortTuple *stup, void *tup)
 
 	/* copy the tuple into sort storage */
 	tuple = ExecCopySlotMinimalTuple(slot);
-	stup->tuple = (void *) tuple;
+	//stup->tuple = (void *) tuple;
 	USEMEM(state, GetMemoryChunkSpace(tuple));
 
 

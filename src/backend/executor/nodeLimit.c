@@ -44,10 +44,10 @@ int table_page_number = 0;
 
 // char* table_name = "dflife";
 // char* set_table_name = "forest";
-char* set_table_name = "higgs_1m";
+char* set_table_name = DEFAULT_TABLE_NAME;
 
 bool set_run_test = false;
-bool is_running_test = false;
+bool is_training = false;
 
 SGDTupleDesc* sgd_tupledesc; // also used in nodeSort.c for parsing tuple_slot to double* features
 
@@ -72,8 +72,8 @@ static void transfer_slot_to_sgd_tuple_getattr(TupleTableSlot* slot, SGDTuple* s
 static int my_parse_array_no_copy(struct varlena* input, int typesize, char** output);
 
 
-static void compute_tuple_loss_LR(SGDTuple* tp, Model* model, SGDBatchState* batchstate);
-static void compute_tuple_gradient_LR(SGDTuple* tp, Model* model, SGDBatchState* batchstate);
+static void compute_tuple_loss_LR(SortTuple* tp, Model* model, SGDBatchState* batchstate);
+static void compute_tuple_gradient_LR(SortTuple* tp, Model* model, SGDBatchState* batchstate);
 
 
 
@@ -200,7 +200,7 @@ log_sum(const double a, const double b) {
 
 
 Model* init_model(int n_features) {
-    Model* model = (Model *) palloc0(sizeof(Model));
+    Model* model = (Model *) palloc(sizeof(Model));
 
 	model->model_name = set_model_name;
 	model->total_loss = 0;
@@ -213,7 +213,7 @@ Model* init_model(int n_features) {
     // use memorycontext later
 	model->w = (double *) palloc0(sizeof(double) * n_features);
 
-	memset(model->w, 0, sizeof(double) * n_features);
+	//memset(model->w, 0, sizeof(double) * n_features);
 
     return model;
 }
@@ -225,11 +225,11 @@ void ExecClearModel(Model* model) {
 }
 
 static SGDBatchState* init_SGDBatchState(int n_features) {
-    SGDBatchState* batchstate = (SGDBatchState *) palloc0(sizeof(SGDBatchState));
+    SGDBatchState* batchstate = (SGDBatchState *) palloc(sizeof(SGDBatchState));
     batchstate->gradients = (double *) palloc0(sizeof(double) * n_features);
-	int i;
-	for (i = 0; i < n_features; i++)
-		batchstate->gradients[i] = 0;
+	// int i;
+	// for (i = 0; i < n_features; i++)
+	// 	batchstate->gradients[i] = 0;
     batchstate->loss = 0;
 	batchstate->tuple_num = 0;
     return batchstate;
@@ -248,13 +248,13 @@ static TestState* init_TestState(bool run_test) {
 }
 
 static SGDTuple* init_SGDTuple(int n_features) {
-    SGDTuple* sgd_tuple = (SGDTuple *) palloc0(sizeof(SGDTuple));
+    SGDTuple* sgd_tuple = (SGDTuple *) palloc(sizeof(SGDTuple));
     //sgd_tuple->features = (double *) palloc0(sizeof(double) * n_features);
     return sgd_tuple;
 }
 
 static SGDTupleDesc* init_SGDTupleDesc(int n_features) {
-    SGDTupleDesc* sgd_tupledesc = (SGDTupleDesc *) palloc0(sizeof(SGDTupleDesc));
+    SGDTupleDesc* sgd_tupledesc = (SGDTupleDesc *) palloc(sizeof(SGDTupleDesc));
 
     // sgd_tupledesc->values = (Datum *) palloc0(sizeof(Datum) * col_num);
 	// sgd_tupledesc->isnulls = (bool *) palloc0(sizeof(bool) * col_num);
@@ -325,10 +325,10 @@ static void free_TestState(TestState* test_state) {
 }
 
 inline void
-compute_tuple_gradient_LR(SGDTuple* tp, Model* model, SGDBatchState* batchstate)
+compute_tuple_gradient_LR(SortTuple* tp, Model* model, SGDBatchState* batchstate)
 {
     double y = tp->class_label;
-    double* x = tp->features;
+    double* x = tp->features_v;
 
     int n = model->n_features;
 
@@ -347,9 +347,9 @@ compute_tuple_gradient_LR(SGDTuple* tp, Model* model, SGDBatchState* batchstate)
 
 
 inline void
-compute_tuple_loss_LR(SGDTuple* tp, Model* model, SGDBatchState* batchstate)
+compute_tuple_loss_LR(SortTuple* tp, Model* model, SGDBatchState* batchstate)
 {
-	double* x = tp->features;
+	double* x = tp->features_v;
 	int y = tp->class_label;
 
 	double wx = dot(model->w, x, model->n_features);
@@ -826,8 +826,8 @@ ExecLimit(LimitState *node)
 	 * tuplesort.c. Subsequent calls just fetch tuples from tuplesort.
 	 */
 	SGDBatchState* batchstate = init_SGDBatchState(model->n_features);
-	SGDTuple* sgd_tuple = init_SGDTuple(model->n_features);
-	TestState* test_state = init_TestState(set_run_test);
+	// SGDTuple* sgd_tuple = init_SGDTuple(model->n_features);
+	// TestState* test_state = init_TestState(set_run_test);
 
 	//Datum values[model->n_features + model-> slot->]
 	PlanState  *outerNode;
@@ -841,7 +841,7 @@ ExecLimit(LimitState *node)
 	outerNode = outerPlanState(node);
 	// tupDesc is the TupleDesc of the previous node
 	tupDesc = ExecGetResultType(outerNode);
-	int col_num = tupDesc->natts;
+	// int col_num = tupDesc->natts;
                                               
 	// node->tupleShuffleSortState = (void *) tupleShuffleSortState;
 
@@ -855,20 +855,20 @@ ExecLimit(LimitState *node)
 	double iter_exec_time;
 
 	// for counting data parsing time
-	clock_t parse_start, parse_finish;
-	double parse_time = 0;
+	// clock_t parse_start, parse_finish;
+	// double parse_time = 0;
 
 	// for counting the computation time
-	clock_t comp_start, comp_finish;
-	double comp_time = 0;
+	// clock_t comp_start, comp_finish;
+	// double comp_time = 0;
 
-	// for debug
-	// FILE* fp = fopen("/home/lijie/did.txt", "w");
+	//for debug
+	//FILE* fp = fopen("/home/lijie/did.txt", "w");
 	// iterations
 	int i;
 	for (i = 1; i <= iter_num; i++) {
 		iter_start = clock();
-		is_running_test = true;
+		is_training = true;
 		int ith_tuple = 0;
 
 		bool end_of_reach = false;
@@ -924,21 +924,24 @@ ExecLimit(LimitState *node)
 					break;
 				}
 
-				sgd_tuple->features = read_buffer[j].features_v;
-				sgd_tuple->class_label = read_buffer[j].class_label;
+				//double *features = read_buffer[j].features_v;
+				//sgd_tuple->class_label = read_buffer[j].class_label;
 
 
 				// for debug 
-				// if (i == 1)
+				// if (i == 49) {
+				// 	SortTuple* sgd_tuple = &read_buffer[j];
 				// 	fprintf(fp, "%d, {%f, %f, %f, %f}, %d\n", slot->did, 
-				// 		sgd_tuple->features[0], sgd_tuple->features[1], sgd_tuple->features[2], sgd_tuple->features[3],
+				// 		sgd_tuple->features_v[0], sgd_tuple->features_v[1], 
+				// 		sgd_tuple->features_v[2], sgd_tuple->features_v[3],
 				// 		sgd_tuple->class_label);
+				// }
 				//parse_finish = clock();
 				//parse_time += (double)(parse_finish - parse_start) / CLOCKS_PER_SEC;    
 
 				//comp_start = clock();
 				// perform_SGD(node->model, sgd_tuple, batchstate, ith_tuple);
-				compute_tuple_gradient_LR(sgd_tuple, model, NULL);
+				compute_tuple_gradient_LR(&read_buffer[j], model, NULL);
 				//comp_finish = clock();
 				//comp_time += (double)(comp_finish - comp_start) / CLOCKS_PER_SEC;
 
@@ -960,7 +963,7 @@ ExecLimit(LimitState *node)
 		// 
 		// compute the loss 
 		// 
-		is_running_test = true;
+		is_training = false;
 		end_of_reach = false;
 		while(true) {
 			slot = ExecProcNode(outerNode);
@@ -974,17 +977,19 @@ ExecLimit(LimitState *node)
 
 					iter_finish = clock();
 					iter_exec_time = (double)(iter_finish - iter_start) / CLOCKS_PER_SEC; 
-					double read_time = iter_exec_time - parse_time - comp_time;
-					elog(INFO, "[Iter %2d] Loss = %.2f, exec_t = %.2fs, read_t = %.2fs, parse_t = %.2fs, comp_t = %.2fs", 
-							i, model->total_loss, iter_exec_time, read_time, parse_time, comp_time);
+					//double read_time = iter_exec_time - parse_time - comp_time;
+					// elog(INFO, "[Iter %2d] Loss = %.2f, exec_t = %.2fs, read_t = %.2fs, parse_t = %.2fs, comp_t = %.2fs", 
+					// 		i, model->total_loss, iter_exec_time, read_time, parse_time, comp_time);
+					elog(INFO, "[Iter %2d] Loss = %.2f, exec_t = %.2fs", 
+							i, model->total_loss, iter_exec_time);
 			
 					model->total_loss = 0;
 					end_of_reach = true;
 					if (i == iter_num) { // finish
 						free_SGDBatchState(batchstate);
-						free_SGDTuple(sgd_tuple);
+						//free_SGDTuple(sgd_tuple);
 						free_SGDTupleDesc(sgd_tupledesc);
-						free_TestState(test_state);
+						//free_TestState(test_state);
 						break;	
 					}
 					else { // for the next iteration
@@ -995,10 +1000,10 @@ ExecLimit(LimitState *node)
 				}
 
 				// fast_transfer_slot_to_sgd_tuple(slot, sgd_tuple, sgd_tupledesc);
-				sgd_tuple->features = read_buffer[j].features_v;
-				sgd_tuple->class_label = read_buffer[j].class_label;
+				// sgd_tuple->features = read_buffer[j].features_v;
+				// sgd_tuple->class_label = read_buffer[j].class_label;
 				// compute_tuple_accuracy(node->model, sgd_tuple, test_state);
-				compute_tuple_loss_LR(sgd_tuple, model, NULL);
+				compute_tuple_loss_LR(&read_buffer[j], model, NULL);
 			}
 
 			if (end_of_reach)
@@ -1010,7 +1015,7 @@ ExecLimit(LimitState *node)
 		
 
 	// for debug
-	// fclose(fp);
+	//fclose(fp);
 
 	node->sgd_done = true;
 	SO1_printf("ExecSGD: %s\n", "Performing SGD done");
@@ -1291,7 +1296,7 @@ ExecInitLimit(Limit *node, EState *estate, int eflags)
 	const char* work_mem_str = GetConfigOption("work_mem", false, false);
 	elog(INFO, "============== Begin Training on %s Using %s Model ==============", set_table_name, set_model_name);
 	elog(INFO, "[Param] model_name = %s", set_model_name);
-	elog(INFO, "[Param] run_test = %d", set_run_test);
+	// elog(INFO, "[Param] run_test = %d", set_run_test);
 	elog(INFO, "[Param] work_mem = %s KB", work_mem_str);
 	elog(INFO, "[Param] block_page_num = %d pages", set_block_page_num);
 	// elog(INFO, "[Param] io_block_size = %d pages", set_io_big_block_size);

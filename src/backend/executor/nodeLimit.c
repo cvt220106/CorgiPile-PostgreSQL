@@ -285,7 +285,19 @@ static SGDTupleDesc* init_SGDTupleDesc(int n_features) {
 		sgd_tupledesc->v_col = 1;
 		sgd_tupledesc->label_col = 2;
 	}
+	else if (strcmp(set_table_name, "higgs_1m_clustered") == 0) {
+		/* for higgs_1m */
+		sgd_tupledesc->k_col = -1; // from 0
+		sgd_tupledesc->v_col = 1;
+		sgd_tupledesc->label_col = 2;
+	}
 	else if (strcmp(set_table_name, "higgs_10m") == 0) {
+		/* for higgs_1m */
+		sgd_tupledesc->k_col = -1; // from 0
+		sgd_tupledesc->v_col = 1;
+		sgd_tupledesc->label_col = 2;
+	}
+	else if (strcmp(set_table_name, "higgs_10m_clustered") == 0) {
 		/* for higgs_1m */
 		sgd_tupledesc->k_col = -1; // from 0
 		sgd_tupledesc->v_col = 1;
@@ -1331,7 +1343,13 @@ ExecInitLimit(Limit *node, EState *estate, int eflags)
     else if (strcmp(set_table_name, "higgs_1m") == 0)
 		// for higgs_1m
    	 	n_features = 28;
+	else if (strcmp(set_table_name, "higgs_1m_clustered") == 0)
+		// for higgs_1m
+   	 	n_features = 28;
 	else if (strcmp(set_table_name, "higgs_10m") == 0)
+		// for higgs_1m
+   	 	n_features = 28;
+	else if (strcmp(set_table_name, "higgs_10m_clustered") == 0)
 		// for higgs_1m
    	 	n_features = 28;
 	

@@ -678,6 +678,15 @@ static struct config_bool ConfigureNamesBool[] =
 		true,
 		NULL, NULL, NULL
 	},
+	{
+		{"shuffle", PGC_USERSET, DB_ML,
+			gettext_noop("Enables shuffling tuples in the buffer."),
+			NULL
+		},
+		&set_shuffle,
+		true,
+		NULL, NULL, NULL
+	},
 	// added end
 	{
 		{"enable_seqscan", PGC_USERSET, QUERY_TUNING_METHOD,

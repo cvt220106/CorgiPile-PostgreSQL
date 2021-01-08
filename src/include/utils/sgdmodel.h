@@ -9,10 +9,10 @@
 
 
 #define DEFAULT_BATCH_SIZE  1
-#define DEFAULT_ITER_NUM  10
-#define DEFAULT_LEARNING_RATE	0.8
+#define DEFAULT_ITER_NUM  30
+#define DEFAULT_LEARNING_RATE	0.1
 #define DEFAULT_MODEL_NAME "LR"
-#define DEFAULT_TABLE_NAME "higgs_1m"
+#define DEFAULT_TABLE_NAME "forest"
 
 
 typedef struct Model {
@@ -76,6 +76,7 @@ extern char* set_table_name;
 extern int table_page_number;
 
 extern bool set_run_test;
+extern bool set_shuffle;
 
 extern SGDTupleDesc* sgd_tupledesc;
 

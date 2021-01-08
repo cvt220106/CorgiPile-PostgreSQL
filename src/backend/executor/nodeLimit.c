@@ -47,7 +47,8 @@ int table_page_number = 0;
 char* set_table_name = DEFAULT_TABLE_NAME;
 
 bool set_run_test = false;
-bool is_training = false;
+bool set_shuffle = true;
+bool is_training = true;
 
 SGDTupleDesc* sgd_tupledesc; // also used in nodeSort.c for parsing tuple_slot to double* features
 
@@ -886,7 +887,7 @@ ExecLimit(LimitState *node)
 	int i;
 	for (i = 1; i <= iter_num; i++) {
 		iter_start = clock();
-		is_training = true;
+		is_training = set_shuffle;
 		int ith_tuple = 0;
 
 		bool end_of_reach = false;
@@ -1045,7 +1046,7 @@ ExecLimit(LimitState *node)
 	// elog(INFO, "[Model total loss %f]", model->total_loss);
 
 	// slot = output_model_record(node->ps.ps_ResultTupleSlot, model);
-
+	slot = NULL;
 	return slot;
 }
 
@@ -1315,6 +1316,7 @@ ExecInitLimit(Limit *node, EState *estate, int eflags)
 	elog(INFO, "============== Begin Training on %s Using %s Model ==============", set_table_name, set_model_name);
 	elog(INFO, "[Param] model_name = %s", set_model_name);
 	// elog(INFO, "[Param] run_test = %d", set_run_test);
+	elog(INFO, "[Param] shuffle = %d", set_shuffle);
 	elog(INFO, "[Param] work_mem = %s KB", work_mem_str);
 	elog(INFO, "[Param] block_page_num = %d pages", set_block_page_num);
 	// elog(INFO, "[Param] io_block_size = %d pages", set_io_big_block_size);

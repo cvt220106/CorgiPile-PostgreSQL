@@ -281,6 +281,8 @@ struct Tuplesortstate
 	SortTuple	*write_buffer;
 	SortTuple	*read_buffer;
 
+	// int			*read_index;
+
 
 	int			memtupcount;	/* number of tuples currently present */
 	int			memtupsize;		/* allocated length of memtuples array */
@@ -670,6 +672,7 @@ void fast_transfer_slot_to_sgd_tuple (
 		}
 		// Assert(v_num == n_features);
 		memcpy(sort_tuple->features_v, v, v_num * sizeof(double));
+		//sort_tuple->features_v = v;
 		
 	}
 

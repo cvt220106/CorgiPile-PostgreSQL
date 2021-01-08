@@ -898,10 +898,11 @@ ExecLimit(LimitState *node)
 
 			SortTuple *read_buffer = slot->read_buffer;
 			int buffer_size = slot->read_buffer_size;
+			int *read_buf_indexes = slot->read_buf_indexes;
 
 			int j;
 			for (j = 0; j < buffer_size; ++j) {
-				if (read_buffer[j].isnull) {
+				if (read_buffer[read_buf_indexes[j]].isnull) {
 					// perform_SGD(node->model, NULL, batchstate, ith_tuple);
 
 					if (i == 1) {
@@ -960,7 +961,7 @@ ExecLimit(LimitState *node)
 
 				//comp_start = clock();
 				// perform_SGD(node->model, sgd_tuple, batchstate, ith_tuple);
-				compute_tuple_gradient_LR(&read_buffer[j], model, NULL);
+				compute_tuple_gradient_LR(&read_buffer[read_buf_indexes[j]], model, NULL);
 				//comp_finish = clock();
 				//comp_time += (double)(comp_finish - comp_start) / CLOCKS_PER_SEC;
 

@@ -134,6 +134,7 @@ typedef struct TupleTableSlot
 	int label;
 	SortTuple* read_buffer;
 	int read_buffer_size;
+	int			*read_buf_indexes;
 
 	// for debug
 	int did;

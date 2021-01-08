@@ -49,7 +49,7 @@ pthread_cond_t swap_finished_cond;
 
 
 void wait_buffer_full(SortState *node) {
-	clock_t start = clock(); 
+	//clock_t start = clock(); 
 
     pthread_mutex_lock(&buffer_mutex);
     while (!node->buffer_full_signal) {
@@ -59,9 +59,9 @@ void wait_buffer_full(SortState *node) {
     node->buffer_full_signal = false;
     pthread_mutex_unlock(&buffer_mutex);
 
-	clock_t finish = clock();    
-   	double duration = (double)(finish - start) / CLOCKS_PER_SEC;    
-   	elog(INFO, "[read][wait_buffer_full] %f seconds, is_training = %d", duration, (int)is_training);  
+	//clock_t finish = clock();    
+   	//double duration = (double)(finish - start) / CLOCKS_PER_SEC;    
+   	//elog(INFO, "[read][wait_buffer_full] %f seconds, is_training = %d", duration, (int)is_training);  
 }
 
 void signal_buffer_full(SortState *node) {
@@ -73,7 +73,7 @@ void signal_buffer_full(SortState *node) {
 }
 
 void wait_swap_finished(SortState *node) {
-    clock_t start = clock(); 
+    //clock_t start = clock(); 
     pthread_mutex_lock(&swap_mutex);
     while (!node->swap_finished_signal) {
         //printf("\n[write thread] wait_swap_finished()\n");
@@ -82,9 +82,9 @@ void wait_swap_finished(SortState *node) {
     node->swap_finished_signal = false;
     pthread_mutex_unlock(&swap_mutex);
 
-	clock_t finish = clock();    
-   	double duration = (double)(finish - start) / CLOCKS_PER_SEC;    
-   	elog(INFO, "[write][wait_swap_finished] %f seconds, is_training = %d", duration, (int)is_training);  
+	// clock_t finish = clock();    
+   	// double duration = (double)(finish - start) / CLOCKS_PER_SEC;    
+   	// elog(INFO, "[write][wait_swap_finished] %f seconds, is_training = %d", duration, (int)is_training);  
 }
 
 void signal_swap_finished(SortState *node) {
@@ -371,9 +371,11 @@ ExecSort(SortState *node)
 	slot = node->ss.ps.ps_ResultTupleSlot;
 
 	slot->read_buffer = tupleshufflesort_getreadbuffer(state);
+	slot->read_buf_indexes = tupleshufflesort_getbufferindexes(state);
 	slot->tts_isempty = false;
 	slot->tts_shouldFree = false;
 	slot->read_buffer_size = tupleshufflesort_getbuffersize(state);
+
 
 	return slot;
 }

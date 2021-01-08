@@ -81,6 +81,7 @@ extern void tupleshufflesort_restorepos(Tuplesortstate *state);
 
 extern SortTuple* tupleshufflesort_getreadbuffer(Tuplesortstate *state);
 extern int tupleshufflesort_getbuffersize(Tuplesortstate *state);
+extern int* tupleshufflesort_getbufferindexes(Tuplesortstate *state);
 
 
 

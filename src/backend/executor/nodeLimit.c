@@ -848,7 +848,6 @@ ExecLimit(LimitState *node)
 	// SGDTuple* sgd_tuple = init_SGDTuple(model->n_features);
 	// TestState* test_state = init_TestState(set_run_test);
 
-	//Datum values[model->n_features + model-> slot->]
 	PlanState  *outerNode;
 	TupleDesc	tupDesc;
 
@@ -899,6 +898,7 @@ ExecLimit(LimitState *node)
 			SortTuple *read_buffer = slot->read_buffer;
 			int buffer_size = slot->read_buffer_size;
 			int *read_buf_indexes = slot->read_buf_indexes;
+
 
 			int j;
 			for (j = 0; j < buffer_size; ++j) {
@@ -1051,6 +1051,209 @@ ExecLimit(LimitState *node)
 	return slot;
 }
 
+/*
+TupleTableSlot *				
+ExecLimit(LimitState *node)
+{
+	EState	   *estate;
+	TupleTableSlot *slot;
+	Model* model = node->model;
+
+	SO1_printf("ExecSGD: %s\n", "entering routine");
+
+	estate = node->ps.state;
+
+
+	// If first time through, read all tuples from outer plan and pass them to
+	// tuplesort.c. Subsequent calls just fetch tuples from tuplesort.
+
+	SGDBatchState* batchstate = init_SGDBatchState(model->n_features);
+	// SGDTuple* sgd_tuple = init_SGDTuple(model->n_features);
+	// TestState* test_state = init_TestState(set_run_test);
+
+	//Datum values[model->n_features + model-> slot->]
+	PlanState  *outerNode;
+	TupleDesc	tupDesc;
+
+	SO1_printf("ExecSGD: %s\n", "SGD iteration ");
+
+	estate->es_direction = ForwardScanDirection;
+
+	// outerNode = ShuffleSortNode
+	outerNode = outerPlanState(node);
+	// tupDesc is the TupleDesc of the previous node
+	tupDesc = ExecGetResultType(outerNode);
+	// int col_num = tupDesc->natts;
+                                              
+	// node->tupleShuffleSortState = (void *) tupleShuffleSortState;
+
+	int iter_num = model->iter_num;
+    // int batch_size = node->model->batch_size;
+
+
+
+	// for counting execution time for each iteration
+	clock_t iter_start, iter_finish;
+	double iter_exec_time;
+
+	// for counting data parsing time
+	// clock_t parse_start, parse_finish;
+	// double parse_time = 0;
+
+	// for counting the computation time
+	// clock_t comp_start, comp_finish;
+	// double comp_time = 0;
+
+	//for debug
+	//FILE* fp = fopen("/home/lijie/did.txt", "w");
+	// iterations
+	int i;
+	for (i = 1; i <= iter_num; i++) {
+		iter_start = clock();
+		is_training = set_shuffle;
+		int ith_tuple = 0;
+
+		bool end_of_reach = false;
+
+		while(true) {
+			// get a tuple from ShuffleSortNode
+			slot = ExecProcNode(outerNode);
+
+			SortTuple *read_buffer = slot->read_buffer;
+			int buffer_size = slot->read_buffer_size;
+			int *read_buf_indexes = slot->read_buf_indexes;
+
+			int j;
+			for (j = 0; j < buffer_size; ++j) {
+				if (read_buffer[read_buf_indexes[j]].isnull) {
+					// perform_SGD(node->model, NULL, batchstate, ith_tuple);
+
+					if (i == 1) {
+						double avg_page_tuple_num = (double) model->tuple_num / table_page_number;
+						elog(INFO, "[Computed Param] table_tuple_num = %d, buffer_block_num = %.2f", 
+							model->tuple_num, 
+							(double) set_buffer_tuple_num / (set_block_page_num * avg_page_tuple_num));
+					}
+
+					// iter_finish = clock();
+					// iter_exec_time = (double)(iter_finish - iter_start) / CLOCKS_PER_SEC; 
+					// double read_time = iter_exec_time - parse_time - comp_time;
+					// elog(INFO, "[Iter %2d] Loss = %.2f, exec_t = %.2fs, read_t = %.2fs, parse_t = %.2fs, comp_t = %.2fs", 
+					// 			i, model->total_loss, iter_exec_time, read_time, parse_time, comp_time);
+
+
+					end_of_reach = true;
+					ExecReScan(outerNode);	
+					break;
+				}
+
+				//double *features = read_buffer[j].features_v;
+				//sgd_tuple->class_label = read_buffer[j].class_label;
+
+
+				// for debug 
+				// if (i == 49) {
+				// 	SortTuple* sgd_tuple = &read_buffer[j];
+				// 	fprintf(fp, "%d, {%f, %f, %f, %f}, %d\n", slot->did, 
+				// 		sgd_tuple->features_v[0], sgd_tuple->features_v[1], 
+				// 		sgd_tuple->features_v[2], sgd_tuple->features_v[3],
+				// 		sgd_tuple->class_label);
+				// }
+				//parse_finish = clock();
+				//parse_time += (double)(parse_finish - parse_start) / CLOCKS_PER_SEC;    
+
+				//comp_start = clock();
+				// perform_SGD(node->model, sgd_tuple, batchstate, ith_tuple);
+				compute_tuple_gradient_LR(&read_buffer[read_buf_indexes[j]], model, NULL);
+				//comp_finish = clock();
+				//comp_time += (double)(comp_finish - comp_start) / CLOCKS_PER_SEC;
+
+				// ith_tuple = (ith_tuple + 1) % batch_size;
+
+				if (i == 1)
+					model->tuple_num += 1;
+			}
+			
+			
+			if (end_of_reach)
+				break;
+
+		}
+
+		// decay the learning rate with 0.95^iter_num
+		model->learning_rate = model->learning_rate * 0.95;
+
+		// 
+		// compute the loss 
+		// 
+		is_training = false;
+		end_of_reach = false;
+		while(true) {
+			slot = ExecProcNode(outerNode);
+			
+			SortTuple *read_buffer = slot->read_buffer;
+			int buffer_size = slot->read_buffer_size;
+
+			int j;
+			for (j = 0; j < buffer_size; ++j) {
+				if (read_buffer[j].isnull) {
+
+					iter_finish = clock();
+					iter_exec_time = (double)(iter_finish - iter_start) / CLOCKS_PER_SEC; 
+					//double read_time = iter_exec_time - parse_time - comp_time;
+					// elog(INFO, "[Iter %2d] Loss = %.2f, exec_t = %.2fs, read_t = %.2fs, parse_t = %.2fs, comp_t = %.2fs", 
+					// 		i, model->total_loss, iter_exec_time, read_time, parse_time, comp_time);
+					elog(INFO, "[Iter %2d] Loss = %.2f, exec_t = %.2fs", 
+							i, model->total_loss, iter_exec_time);
+			
+					model->total_loss = 0;
+					end_of_reach = true;
+					if (i == iter_num) { // finish
+						free_SGDBatchState(batchstate);
+						//free_SGDTuple(sgd_tuple);
+						free_SGDTupleDesc(sgd_tupledesc);
+						//free_TestState(test_state);
+						break;	
+					}
+					else { // for the next iteration
+						// clear_TestState(test_state);
+						ExecReScan(outerNode);	
+						break;
+					}
+				}
+
+				// fast_transfer_slot_to_sgd_tuple(slot, sgd_tuple, sgd_tupledesc);
+				// sgd_tuple->features = read_buffer[j].features_v;
+				// sgd_tuple->class_label = read_buffer[j].class_label;
+				// compute_tuple_accuracy(node->model, sgd_tuple, test_state);
+				compute_tuple_loss_LR(&read_buffer[j], model, NULL);
+			}
+
+			if (end_of_reach)
+				break;
+			
+		}
+
+	}
+		
+
+	// for debug
+	//fclose(fp);
+
+	node->sgd_done = true;
+	SO1_printf("ExecSGD: %s\n", "Performing SGD done");
+
+	// Get the first or next tuple from tuplesort. Returns NULL if no more tuples.
+
+    // node->ps.ps_ResultTupleSlot; // = Model->w, => ExecStoreMinimalTuple();
+	// slot = node->ps.ps_ResultTupleSlot;
+	// elog(INFO, "[Model total loss %f]", model->total_loss);
+
+	// slot = output_model_record(node->ps.ps_ResultTupleSlot, model);
+	slot = NULL;
+	return slot;
+}
+*/
 
 /*
 TupleTableSlot *				

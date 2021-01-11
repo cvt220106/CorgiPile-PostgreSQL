@@ -282,6 +282,7 @@ struct Tuplesortstate
 	SortTuple	*read_buffer;
 
 	int			*read_buf_indexes;
+	int			*final_read_buf_indexes; // when buffer is partially filled in the end
 
 
 	int			write_buf_count;	/* number of tuples currently present */
@@ -525,7 +526,16 @@ shuffle_tuple(SortTuple *a, size_t n)
 
 }
 
-
+void shuffle_read_buf_indexes(int* read_buf, int read_buf_count) {
+	srand(time(0) + rand());
+	int i;
+	for (i = read_buf_count - 1; i > 0; --i) {
+		int r = rand() % (i + 1);
+		int t = *(read_buf + i);
+		*(read_buf + i) = *(read_buf + r);
+		*(read_buf + r) = t;
+	}	
+}
 
 void 
 free_tupleshufflesort_state(Tuplesortstate* state)
@@ -549,6 +559,11 @@ free_tupleshufflesort_state(Tuplesortstate* state)
 	FREEMEM(state, GetMemoryChunkSpace(state->memtuples_buffer_2));
 
 	FREEMEM(state, GetMemoryChunkSpace(state->read_buf_indexes));
+
+	if (state->final_read_buf_indexes != NULL) {
+		FREEMEM(state, GetMemoryChunkSpace(state->final_read_buf_indexes));
+		pfree(state->final_read_buf_indexes);
+	}
 	pfree(state->memtuples_buffer_1);
 	pfree(state->memtuples_buffer_2);
 	pfree(state->read_buf_indexes);
@@ -713,6 +728,7 @@ puttupleslot_into_buffer(Tuplesortstate *state, TupleTableSlot *slot) {
 		++state->write_buf_count; // only counts non-empty tuples
 	}
 	else {
+		// state->put_index == 31012
 		state->write_buffer[state->put_index].isnull = true;
 	}
 
@@ -982,6 +998,8 @@ tupleshufflesort_begin_common(int workMem)
 	for (j = 0; j < state->memtupsize; ++j)
 		state->read_buf_indexes[j] = j;
 
+	shuffle_read_buf_indexes(state->read_buf_indexes, state->memtupsize);
+
 	/*
 	for (int i = 0; i < state->memtupsize; i++) {
 		SortTuple null_tuple1;
@@ -1227,6 +1245,45 @@ tupleshufflesort_puttupleslot(Tuplesortstate *state, TupleTableSlot *slot)
 // }
 
 
+
+void
+tupleshufflesort_performshuffle(Tuplesortstate *state) 
+{
+	state->read_buf_count = state->write_buf_count;
+	state->write_buf_count = 0;
+
+	if (is_training) {
+		if (state->read_buf_count < state->memtupsize) {
+			// init final_read_buf_indexes for the last partially filled buffer
+			int n = state->read_buf_count + 1;
+			if (state->final_read_buf_indexes == NULL) {
+				MemoryContext oldcontext = MemoryContextSwitchTo(state->shufflesortcontext);
+				state->final_read_buf_indexes = (int *)palloc(n * sizeof(int));
+				USEMEM(state, GetMemoryChunkSpace(state->final_read_buf_indexes));
+				MemoryContextSwitchTo(oldcontext);
+
+				int j;
+				for (j = 0; j < n; ++j)
+					state->final_read_buf_indexes[j] = j;
+
+				shuffle_read_buf_indexes(state->final_read_buf_indexes, state->read_buf_count);
+			}
+		}
+	}
+
+/*
+	if (state->read_buf_count < state->memtupsize) {
+		++state->read_buf_count;
+	}
+*/
+
+
+	// finish = clock();    
+   	// double duration = (double)(finish - start) / CLOCKS_PER_SEC;    
+   	// elog(INFO, "[shuffle %d tuples] %f seconds\n", n, duration);      
+}
+
+/*
 void
 tupleshufflesort_performshuffle(Tuplesortstate *state) 
 {
@@ -1234,13 +1291,7 @@ tupleshufflesort_performshuffle(Tuplesortstate *state)
 	// start = clock(); 
 	// int n = state->memtupcount;
 	//elog(INFO, "[Write thread] perform_shuffle: state->memtupcount = %d", state->memtupcount);
-	/*
-	if (state->memtupcount > 1) {
-		if (is_training)
-			shuffle_tuple_indexes(state->read_buf_indexes, state->memtupcount);
-		state->memtupcount = 0;
-	}
-	*/
+	
 
 	state->read_buf_count = state->write_buf_count;
 	state->write_buf_count = 0;
@@ -1253,6 +1304,7 @@ tupleshufflesort_performshuffle(Tuplesortstate *state)
 				state->read_buf_indexes[i] = i;
 		} 
 		// shuffle read_buf_indexes
+		srand(time(0) + rand());
 		int* a = state->read_buf_indexes;
 		int i;
 		for (i = state->read_buf_count - 1; i > 0; --i) {
@@ -1271,7 +1323,7 @@ tupleshufflesort_performshuffle(Tuplesortstate *state)
    	// double duration = (double)(finish - start) / CLOCKS_PER_SEC;    
    	// elog(INFO, "[shuffle %d tuples] %f seconds\n", n, duration);      
 }
-
+*/
 
 /*
 void
@@ -1461,13 +1513,18 @@ SortTuple* tupleshufflesort_getreadbuffer(Tuplesortstate *state) {
 }
 
 int* tupleshufflesort_getbufferindexes(Tuplesortstate *state) {
-	return state->read_buf_indexes;
+	if (state->read_buf_count < state->memtupsize)
+		return state->final_read_buf_indexes;
+	else
+		return state->read_buf_indexes;
 }
 
 
 int tupleshufflesort_getbuffersize(Tuplesortstate *state) {
-	// return state->memtupsize;
-	return state->read_buf_count;
+	if (state->read_buf_count < state->memtupsize)
+		return state->read_buf_count + 1;
+	else
+		return state->read_buf_count;
 }
 
 void

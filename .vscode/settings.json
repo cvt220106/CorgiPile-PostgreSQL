@@ -10,6 +10,7 @@
         "iterator": "c",
         "__tuple": "c",
         "tuple": "c",
-        "__node_handle": "c"
+        "__node_handle": "c",
+        "random": "c"
     }
 }

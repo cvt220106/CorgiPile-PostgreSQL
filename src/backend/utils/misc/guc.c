@@ -687,6 +687,15 @@ static struct config_bool ConfigureNamesBool[] =
 		true,
 		NULL, NULL, NULL
 	},
+	{
+		{"use_malloc", PGC_USERSET, DB_ML,
+			gettext_noop("Use malloc to allocate memory instead of PG's MemoryContext."),
+			NULL
+		},
+		&set_use_malloc,
+		false,
+		NULL, NULL, NULL
+	},
 	// added end
 	{
 		{"enable_seqscan", PGC_USERSET, QUERY_TUNING_METHOD,

@@ -77,10 +77,12 @@ extern int table_page_number;
 
 extern bool set_run_test;
 extern bool set_shuffle;
+extern bool set_use_malloc;
 
 extern SGDTupleDesc* sgd_tupledesc;
 
 extern bool is_training;
+
 
 
 

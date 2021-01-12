@@ -66,6 +66,8 @@ extern void tupleshufflesort_performshuffle(Tuplesortstate *state);
 
 extern void free_tupleshufflesort_state(Tuplesortstate* tuplesortstate);
 
+extern void plain_free_tupleshufflesort_state(Tuplesortstate* tuplesortstate);
+
 extern bool tupleshufflesort_puttupleslot(Tuplesortstate *state, TupleTableSlot *slot);
 
 extern bool is_shuffle_buffer_emtpy(Tuplesortstate *state);

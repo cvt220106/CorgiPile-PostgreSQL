@@ -99,7 +99,10 @@ void free_buffer(Tuplesortstate* tuplesortstate)
 {
 	// We may do some other clearing jobs
 	// e.g., need to delete state->memtuples to avoid memory leak
-	free_tupleshufflesort_state(tuplesortstate);
+	if (set_use_malloc == false)
+		free_tupleshufflesort_state(tuplesortstate);
+	else
+		plain_free_tupleshufflesort_state(tuplesortstate);
 
 }
 

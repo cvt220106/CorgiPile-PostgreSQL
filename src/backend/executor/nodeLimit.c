@@ -50,6 +50,8 @@ bool set_run_test = false;
 bool set_shuffle = true;
 bool is_training = true;
 
+bool set_use_malloc = false;
+
 SGDTupleDesc* sgd_tupledesc; // also used in nodeSort.c for parsing tuple_slot to double* features
 
 static Model* init_model(int n_features);

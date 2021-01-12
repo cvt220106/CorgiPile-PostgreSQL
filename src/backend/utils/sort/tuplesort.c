@@ -571,6 +571,29 @@ free_tupleshufflesort_state(Tuplesortstate* state)
 	MemoryContextSwitchTo(oldcontext);
 }
 
+
+void 
+plain_free_tupleshufflesort_state(Tuplesortstate* state)
+{
+	int i;
+	for (i = 0; i < state->memtupsize; i++) {
+		if (state->memtuples_buffer_1[i].features_v != NULL) {
+			free(state->memtuples_buffer_1[i].features_v);
+			// elog(INFO, "pfree %d features_v", i);
+		}
+		if (state->memtuples_buffer_2[i].features_v != NULL) {
+			free(state->memtuples_buffer_2[i].features_v);
+		}
+	}
+
+	if (state->final_read_buf_indexes != NULL) {
+		free(state->final_read_buf_indexes);
+	}
+	free(state->memtuples_buffer_1);
+	free(state->memtuples_buffer_2);
+	free(state->read_buf_indexes);
+}
+
 /*
 int
 compute_loss_and_update_model(TupleShuffleSortState* state, Model* model,
@@ -682,12 +705,15 @@ void fast_transfer_slot_to_sgd_tuple (
 	}
 	
 	else {
-		// sgd_tuple->features_v = v;
 		if (sort_tuple->features_v == NULL) {
-			MemoryContext oldcontext = MemoryContextSwitchTo(state->shufflesortcontext);
-			sort_tuple->features_v = (double *)palloc(n_features * sizeof(double));
-			USEMEM(state, GetMemoryChunkSpace(sort_tuple->features_v));
-			MemoryContextSwitchTo(oldcontext);
+			if (set_use_malloc)
+				sort_tuple->features_v = (double *)malloc(n_features * sizeof(double));
+			else {
+				MemoryContext oldcontext = MemoryContextSwitchTo(state->shufflesortcontext);
+				sort_tuple->features_v = (double *)palloc(n_features * sizeof(double));
+				USEMEM(state, GetMemoryChunkSpace(sort_tuple->features_v));
+				MemoryContextSwitchTo(oldcontext);
+			}
 		}
 		// Assert(v_num == n_features);
 		memcpy(sort_tuple->features_v, v, v_num * sizeof(double));
@@ -990,10 +1016,19 @@ tupleshufflesort_begin_common(int workMem)
 	Assert(state->memtuples_buffer_1 == NULL);
 	Assert(state->memtuples_buffer_2 == NULL);
 	// elog(INFO, "Begin to allocate buffers !!!");
-	state->memtuples_buffer_1 = (SortTuple *) palloc(state->memtupsize * sizeof(SortTuple));
-	state->memtuples_buffer_2 = (SortTuple *) palloc(state->memtupsize * sizeof(SortTuple));
 
-	state->read_buf_indexes = (int *) palloc(state->memtupsize * sizeof(int));
+	if (set_use_malloc) {
+		state->memtuples_buffer_1 = (SortTuple *) malloc(state->memtupsize * sizeof(SortTuple));
+		state->memtuples_buffer_2 = (SortTuple *) malloc(state->memtupsize * sizeof(SortTuple));
+		state->read_buf_indexes = (int *) malloc(state->memtupsize * sizeof(int));
+	}
+	else {
+		state->memtuples_buffer_1 = (SortTuple *) palloc(state->memtupsize * sizeof(SortTuple));
+		state->memtuples_buffer_2 = (SortTuple *) palloc(state->memtupsize * sizeof(SortTuple));
+		state->read_buf_indexes = (int *) palloc(state->memtupsize * sizeof(int));
+	}
+	
+
 	int j;
 	for (j = 0; j < state->memtupsize; ++j)
 		state->read_buf_indexes[j] = j;
@@ -1025,10 +1060,12 @@ tupleshufflesort_begin_common(int workMem)
 		state->memtuples_buffer_2[i] = null_tuple;
 	}
 
-	USEMEM(state, GetMemoryChunkSpace(state->memtuples_buffer_1));
-	USEMEM(state, GetMemoryChunkSpace(state->memtuples_buffer_2));
-
-	USEMEM(state, GetMemoryChunkSpace(state->read_buf_indexes));
+	if (set_use_malloc == false) {
+		USEMEM(state, GetMemoryChunkSpace(state->memtuples_buffer_1));
+		USEMEM(state, GetMemoryChunkSpace(state->memtuples_buffer_2));
+		USEMEM(state, GetMemoryChunkSpace(state->read_buf_indexes));
+	}
+	
 	// tupleshufflesort_reset_state(state);
 
 	/* workMem must be large enough for the minimal memtuples array */
@@ -1257,10 +1294,16 @@ tupleshufflesort_performshuffle(Tuplesortstate *state)
 			// init final_read_buf_indexes for the last partially filled buffer
 			int n = state->read_buf_count + 1;
 			if (state->final_read_buf_indexes == NULL) {
-				MemoryContext oldcontext = MemoryContextSwitchTo(state->shufflesortcontext);
-				state->final_read_buf_indexes = (int *)palloc(n * sizeof(int));
-				USEMEM(state, GetMemoryChunkSpace(state->final_read_buf_indexes));
-				MemoryContextSwitchTo(oldcontext);
+
+				if (set_use_malloc) {
+					state->final_read_buf_indexes = (int *)malloc(n * sizeof(int));
+				}
+				else {
+					MemoryContext oldcontext = MemoryContextSwitchTo(state->shufflesortcontext);
+					state->final_read_buf_indexes = (int *)palloc(n * sizeof(int));
+					USEMEM(state, GetMemoryChunkSpace(state->final_read_buf_indexes));
+					MemoryContextSwitchTo(oldcontext);
+				}
 
 				int j;
 				for (j = 0; j < n; ++j)

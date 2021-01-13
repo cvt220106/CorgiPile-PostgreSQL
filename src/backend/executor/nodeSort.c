@@ -402,8 +402,9 @@ ExecEndSort(SortState *node)
 	ExecClearTuple(node->ss.ps.ps_ResultTupleSlot);
 	//elog(LOG, "end ExecClearTuple ps_ResultTupleSlot.");
 
+	//elog(INFO, "begin free_buffer.");
 	free_buffer(node->tuplesortstate);
-	//elog(LOG, "end free_buffer.");
+	//elog(INFO, "end free_buffer.");
 	/*
 	 * Release tuplesort resources
 	 */

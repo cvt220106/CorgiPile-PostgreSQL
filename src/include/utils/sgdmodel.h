@@ -21,6 +21,7 @@ typedef struct Model {
 	double* w;
     int batch_size;
     double learning_rate;
+	double mu; // for regularization
     double n_features;
     int iter_num;
     int tuple_num;
@@ -34,16 +35,16 @@ typedef struct SGDTupleDesc
 	int v_col; // 2
 	int label_col; // 3
 	int n_features;  // 8
-	
-	// Datum* values;
-	// bool* isnulls;
+
+	int attr_num; // 3 for forest
 } SGDTupleDesc;
 
 
 typedef struct
 {
 	bool	 isnull;
-	double*	 features_k;		/* features of a tuple, n_dim */	
+	int*	 features_k;		/* features of a tuple, n_dim */	
+	int		 k_len;
 	double*  features_v;
     int		 class_label;	/* the class label of a tuple, -1 if there is not any label */
 

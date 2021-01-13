@@ -461,9 +461,9 @@ static Tuplesortstate * tupleshufflesort_begin_common(int workMem);
 static SortTuple* tupleshufflesort_gettuple_common(Tuplesortstate *state);
 static void copytup_heap_original(Tuplesortstate *state, SortTuple *stup, void *tup);
 
-static bool puttupleslot_into_buffer(Tuplesortstate *state, TupleTableSlot *slot);
-static int my_parse_array_no_copy(struct varlena* input, int typesize, char** output);
-static void fast_transfer_slot_to_sgd_tuple(Tuplesortstate *state, TupleTableSlot* slot, SortTuple* sort_tuple);
+// static bool puttupleslot_into_buffer(Tuplesortstate *state, TupleTableSlot *slot);
+// static int my_parse_array_no_copy(struct varlena* input, int typesize, char** output);
+// static void fast_transfer_slot_to_sgd_tuple(Tuplesortstate *state, TupleTableSlot* slot, SortTuple* sort_tuple);
 
 // static SortTuple* tupleshufflesort_getreadbuffer(Tuplesortstate *state);
 // static int tupleshufflesort_getbuffersize(Tuplesortstate *state);
@@ -553,6 +553,15 @@ free_tupleshufflesort_state(Tuplesortstate* state)
 			FREEMEM(state, GetMemoryChunkSpace(state->memtuples_buffer_2[i].features_v));
 			pfree(state->memtuples_buffer_2[i].features_v);
 		}
+
+		if (state->memtuples_buffer_1[i].features_k != NULL) {
+			FREEMEM(state, GetMemoryChunkSpace(state->memtuples_buffer_1[i].features_k));
+			pfree(state->memtuples_buffer_1[i].features_k);
+		}
+		if (state->memtuples_buffer_2[i].features_k != NULL) {
+			FREEMEM(state, GetMemoryChunkSpace(state->memtuples_buffer_2[i].features_k));
+			pfree(state->memtuples_buffer_2[i].features_k);
+		}
 	}
 
 	FREEMEM(state, GetMemoryChunkSpace(state->memtuples_buffer_1));
@@ -583,6 +592,13 @@ plain_free_tupleshufflesort_state(Tuplesortstate* state)
 		}
 		if (state->memtuples_buffer_2[i].features_v != NULL) {
 			free(state->memtuples_buffer_2[i].features_v);
+		}
+
+		if (state->memtuples_buffer_1[i].features_k != NULL) {
+			free(state->memtuples_buffer_1[i].features_k);
+		}
+		if (state->memtuples_buffer_2[i].features_k != NULL) {
+			free(state->memtuples_buffer_2[i].features_k);
 		}
 	}
 
@@ -640,7 +656,7 @@ is_shuffle_buffer_emtpy(Tuplesortstate *state) {
 	return state->memtupcount == 0;
 }
 */
-int 
+inline int 
 my_parse_array_no_copy(struct varlena* input, int typesize, char** output) {
 	// elog(WARNING, "Inside loss(), for v, ISEXTERNAL %d, ISCOMPR %d, ISHORT %d, varsize_short %d", VARATT_IS_EXTERNAL(v2) ? 1 : 0, VARATT_IS_COMPRESSED(v2)  ? 1 : 0, VARATT_IS_SHORT(v2)  ? 1 : 0, VARSIZE_SHORT(v2));
 	// elog(WARNING, "Inside loss(), for v, varlena = %x", input);
@@ -659,6 +675,7 @@ my_parse_array_no_copy(struct varlena* input, int typesize, char** output) {
     }
 }
 
+inline
 void fast_transfer_slot_to_sgd_tuple (
 	Tuplesortstate *state, 
 	TupleTableSlot* slot, 
@@ -671,7 +688,7 @@ void fast_transfer_slot_to_sgd_tuple (
 	// int label_col = sgd_tupledesc->label_col;
 
 	// int attnum = HeapTupleHeaderGetNatts(slot->tts_tuple->t_data);
-	slot_deform_tuple(slot, 3);
+	slot_deform_tuple(slot, sgd_tupledesc->attr_num);
 	
 	// e.g., features = [0.1, 0, 0.2, 0, 0, 0.3, 0, 0], class_label = -1
 	// Tuple = {10, {0, 2, 5}, {0.1, 0.2, 0.3}, -1}
@@ -686,44 +703,51 @@ void fast_transfer_slot_to_sgd_tuple (
 	sort_tuple->class_label = DatumGetInt32(label_dat);
 
 	int n_features = sgd_tupledesc->n_features;
+
+	// 
+	// parse and copy features_v
+	// 
+	if (sort_tuple->features_v == NULL) {
+		if (set_use_malloc)
+			sort_tuple->features_v = (double *)malloc(n_features * sizeof(double));
+		else {
+			MemoryContext oldcontext = MemoryContextSwitchTo(state->shufflesortcontext);
+			sort_tuple->features_v = (double *)palloc(n_features * sizeof(double));
+			USEMEM(state, GetMemoryChunkSpace(sort_tuple->features_v));
+			MemoryContextSwitchTo(oldcontext);
+		}
+	}
+	// Assert(v_num == n_features);
+	memcpy(sort_tuple->features_v, v, v_num * sizeof(double));
+	//sort_tuple->features_v = v;
+	
+
 	// if sparse dataset
+	// parser and copy features_k
 	if (sgd_tupledesc->k_col >= 0) {
 		// k Datum array => int* k 
 		Datum k_dat = slot->tts_values[sgd_tupledesc->k_col];
 		ArrayType  *k_array = DatumGetArrayTypeP(k_dat);
 		int *k;
-    	int k_num = my_parse_array_no_copy((struct varlena*) k_array, 
+    	sort_tuple->k_len = my_parse_array_no_copy((struct varlena*) k_array, 
             	sizeof(int), (char **) &k);
 
-		memset(sort_tuple->features_v, 0, sizeof(double) * n_features);
 
-		int i;
-		for (i = 0; i < k_num; i++) {
-			int f_index = k[i]; // {0, 2, 5}, k[1] = 2
-			sort_tuple->features_v[f_index] = v[i]; // {0.1, 0.2, 0.3}, features[2] = 0.2
-		}
-	}
-	
-	else {
-		if (sort_tuple->features_v == NULL) {
+		if (sort_tuple->features_k == NULL) {
 			if (set_use_malloc)
-				sort_tuple->features_v = (double *)malloc(n_features * sizeof(double));
+				sort_tuple->features_k = (int *)malloc(n_features * sizeof(int));
 			else {
 				MemoryContext oldcontext = MemoryContextSwitchTo(state->shufflesortcontext);
-				sort_tuple->features_v = (double *)palloc(n_features * sizeof(double));
-				USEMEM(state, GetMemoryChunkSpace(sort_tuple->features_v));
+				sort_tuple->features_k = (int *)palloc(n_features * sizeof(int));
+				USEMEM(state, GetMemoryChunkSpace(sort_tuple->features_k));
 				MemoryContextSwitchTo(oldcontext);
 			}
 		}
-		// Assert(v_num == n_features);
-		memcpy(sort_tuple->features_v, v, v_num * sizeof(double));
-		//sort_tuple->features_v = v;
-		
+
+		memcpy(sort_tuple->features_k, k, sort_tuple->k_len * sizeof(int));
 	}
-
+	
 	sort_tuple->isnull = false;
-
-
 
 	// for debug
 	// Datum did_dat = slot->tts_values[0];
@@ -733,11 +757,10 @@ void fast_transfer_slot_to_sgd_tuple (
 	// 	elog(INFO, "After parsing: %d, {%f, %f, %f, %f}, %d", sort_tuple->did, sort_tuple->features_v[0], 
 	// 	sort_tuple->features_v[1], sort_tuple->features_v[2], sort_tuple->features_v[3], sort_tuple->class_label);
 	// }
-
 }
 
 bool
-puttupleslot_into_buffer(Tuplesortstate *state, TupleTableSlot *slot) {
+tupleshufflesort_puttupleslot(Tuplesortstate *state, TupleTableSlot *slot) {
 	// Assert(state->memtupcount < state->memtupsize);
 	bool write_buffer_full = false;
 
@@ -1055,6 +1078,7 @@ tupleshufflesort_begin_common(int workMem)
 		SortTuple null_tuple;
 		null_tuple.isnull = true;
 		null_tuple.features_v = NULL;
+		null_tuple.features_k = NULL;
 
 		state->memtuples_buffer_1[i] = null_tuple;
 		state->memtuples_buffer_2[i] = null_tuple;
@@ -1235,6 +1259,7 @@ void tupleshufflesort_swapbuffer(Tuplesortstate *state) {
 // 	return write_buffer_full;
 // }
 
+/*
 bool
 tupleshufflesort_puttupleslot(Tuplesortstate *state, TupleTableSlot *slot)
 {
@@ -1247,7 +1272,9 @@ tupleshufflesort_puttupleslot(Tuplesortstate *state, TupleTableSlot *slot)
 	//MemoryContextSwitchTo(oldcontext);
 	
 	return write_buffer_full;
+	
 }
+*/
 // Lijie: add end
 
 /*

@@ -58,13 +58,14 @@ static Model* init_model(int n_features);
 static void ExecClearModel(Model* model);
 static SGDBatchState* init_SGDBatchState(int n_features);
 static SGDTuple* init_SGDTuple(int n_features);
-static SGDTupleDesc* init_SGDTupleDesc(int n_features);
+static SGDTupleDesc* init_SGDTupleDesc(int n_features, bool dense);
 static void clear_SGDBatchState(SGDBatchState* batchstate, int n_features);
 static void free_SGDBatchState(SGDBatchState* batchstate);
 static void free_SGDTuple(SGDTuple* sgd_tuple);
 static void free_SGDTupleDesc(SGDTupleDesc* sgd_tupledesc);
 static void compute_tuple_gradient_loss_LR(SGDTuple* tp, Model* model, SGDBatchState* batchstate);
 static void compute_tuple_gradient_loss_SVM(SGDTuple* tp, Model* model, SGDBatchState* batchstate);
+
 static void compute_tuple_accuracy(Model* model, SGDTuple* tp, TestState* test_state);
 static void update_model(Model* model, SGDBatchState* batchstate);
 static void perform_SGD(Model *model, SGDTuple* sgd_tuple, SGDBatchState* batchstate, int i);
@@ -75,11 +76,12 @@ static void transfer_slot_to_sgd_tuple_getattr(TupleTableSlot* slot, SGDTuple* s
 static int my_parse_array_no_copy(struct varlena* input, int typesize, char** output);
 
 
-static void compute_tuple_loss_LR(SortTuple* tp, Model* model, SGDBatchState* batchstate);
-static void compute_tuple_gradient_LR(SortTuple* tp, Model* model, SGDBatchState* batchstate);
+// static void compute_tuple_loss_LR(SortTuple* tp, Model* model, SGDBatchState* batchstate);
+// static void compute_tuple_gradient_LR(SortTuple* tp, Model* model, SGDBatchState* batchstate);
 
 
-
+void	(*compute_tuple_gradient) (SortTuple *stup, Model* model) = NULL;
+void	(*compute_tuple_loss) ( SortTuple *stup, Model* model) = NULL;
 
 // from bismarck
 inline double
@@ -212,10 +214,10 @@ Model* init_model(int n_features) {
 	model->learning_rate = set_learning_rate;
 	model->tuple_num = 0;
 	model->n_features = n_features;
+	model->mu = 0.01;
 
     // use memorycontext later
 	model->w = (double *) palloc0(sizeof(double) * n_features);
-
 	//memset(model->w, 0, sizeof(double) * n_features);
 
     return model;
@@ -256,7 +258,7 @@ static SGDTuple* init_SGDTuple(int n_features) {
     return sgd_tuple;
 }
 
-static SGDTupleDesc* init_SGDTupleDesc(int n_features) {
+static SGDTupleDesc* init_SGDTupleDesc(int n_features, bool dense) {
     SGDTupleDesc* sgd_tupledesc = (SGDTupleDesc *) palloc(sizeof(SGDTupleDesc));
 
     // sgd_tupledesc->values = (Datum *) palloc0(sizeof(Datum) * col_num);
@@ -270,41 +272,19 @@ static SGDTupleDesc* init_SGDTupleDesc(int n_features) {
 	v double precision[],
 	label integer);
 	*/
-	if (strcmp(set_table_name, "dblife") == 0) {
+	if (dense == false) {
 		/* for dblife */
 		sgd_tupledesc->k_col = 1; 
 		sgd_tupledesc->v_col = 2;
 		sgd_tupledesc->label_col = 3;
+		sgd_tupledesc->attr_num = 4;
 	}
-	else if (strcmp(set_table_name, "forest") == 0) {
+	else {
 		/* for forest */
 		sgd_tupledesc->k_col = -1; // from 0
 		sgd_tupledesc->v_col = 1;
 		sgd_tupledesc->label_col = 2;
-	}
-	else if (strcmp(set_table_name, "higgs_1m") == 0) {
-		/* for higgs_1m */
-		sgd_tupledesc->k_col = -1; // from 0
-		sgd_tupledesc->v_col = 1;
-		sgd_tupledesc->label_col = 2;
-	}
-	else if (strcmp(set_table_name, "higgs_1m_clustered") == 0) {
-		/* for higgs_1m */
-		sgd_tupledesc->k_col = -1; // from 0
-		sgd_tupledesc->v_col = 1;
-		sgd_tupledesc->label_col = 2;
-	}
-	else if (strcmp(set_table_name, "higgs_10m") == 0) {
-		/* for higgs_1m */
-		sgd_tupledesc->k_col = -1; // from 0
-		sgd_tupledesc->v_col = 1;
-		sgd_tupledesc->label_col = 2;
-	}
-	else if (strcmp(set_table_name, "higgs_10m_clustered") == 0) {
-		/* for higgs_1m */
-		sgd_tupledesc->k_col = -1; // from 0
-		sgd_tupledesc->v_col = 1;
-		sgd_tupledesc->label_col = 2;
+		sgd_tupledesc->attr_num = 3;
 	}
 	
 	sgd_tupledesc->n_features = n_features;
@@ -346,9 +326,9 @@ static void free_TestState(TestState* test_state) {
 }
 
 inline void
-compute_tuple_gradient_LR(SortTuple* tp, Model* model, SGDBatchState* batchstate)
+compute_dense_tuple_gradient_LR(SortTuple* tp, Model* model)
 {
-    double y = tp->class_label;
+    int y = tp->class_label;
     double* x = tp->features_v;
 
     int n = model->n_features;
@@ -362,20 +342,107 @@ compute_tuple_gradient_LR(SortTuple* tp, Model* model, SGDBatchState* batchstate
 
     // regularization
     // double u = model->mu * model->learning_rate;
-	double u = 0.01 * model->learning_rate;
+	double u = model->mu * model->learning_rate;
     l1_shrink_mask_d(model->w, u, n);
+}
+
+inline void
+compute_sparse_tuple_gradient_LR(SortTuple* tp, Model* model)
+{
+    int y = tp->class_label;
+	int* k = tp->features_k;
+	int k_len = tp->k_len;
+    double* v = tp->features_v;
+	double* w = model->w;
+    
+	// grad
+    double wx = dot_dss(w, k, v, k_len);
+    double sig = sigma(-wx * y);
+    double c = model->learning_rate * y * sig; // scale factor
+    add_and_scale_dss(w, k, v, k_len, c);
+    // regularization
+    double u = model->mu * model->learning_rate;
+    l1_shrink_mask(w, u, k, k_len);
 }
 
 
 inline void
-compute_tuple_loss_LR(SortTuple* tp, Model* model, SGDBatchState* batchstate)
+compute_dense_tuple_loss_LR(SortTuple* tp, Model* model)
 {
-	double* x = tp->features_v;
+	// double* x = tp->features_v;
 	int y = tp->class_label;
 
-	double wx = dot(model->w, x, model->n_features);
+	double wx = dot(model->w, tp->features_v, model->n_features);
     double tuple_loss = log(1 + exp(-y * wx));
 	model->total_loss += tuple_loss;
+}
+
+inline void
+compute_sparse_tuple_loss_LR(SortTuple* tp, Model* model)
+{
+	int y = tp->class_label;
+	double wx = dot_dss(model->w, tp->features_k, tp->features_v, tp->k_len);
+    double tuple_loss = log(1 + exp(-y * wx));
+	model->total_loss += tuple_loss;
+}
+
+
+inline void
+compute_dense_tuple_gradient_SVM(SortTuple* tp, Model* model)
+{
+    int y = tp->class_label;
+    double* x = tp->features_v;
+	int n = model->n_features;
+
+    double wx = dot(model->w, x, n);
+    double c = model->learning_rate * y;
+    // writes
+    if(1 - y * wx > 0) {
+        add_and_scale(model->w, n, x, c);
+    }
+    // regularization
+    double u = model->mu * model->learning_rate;
+    l1_shrink_mask_d(model->w, u, n);
+}
+
+inline void
+compute_sparse_tuple_gradient_SVM(SortTuple* tp, Model* model)
+{
+    int y = tp->class_label;
+	int* k = tp->features_k;
+	int k_len = tp->k_len;
+    double* v = tp->features_v;
+
+	// read and prepare
+    double wx = dot_dss(model->w, k, v, k_len);
+    double c = model->learning_rate * y;
+    // writes
+    if(1 - y * wx > 0) {
+        add_and_scale_dss(model->w, k, v, k_len, c);
+    }
+    // regularization
+    double u = model->mu * model->learning_rate;
+    l1_shrink_mask(model->w, u, k, k_len);
+}
+
+
+inline void
+compute_dense_tuple_loss_SVM(SortTuple* tp, Model* model)
+{
+	int y = tp->class_label;
+
+	double wx = dot(model->w, tp->features_v, model->n_features);
+    double loss = 1 - y * wx;
+    return (loss > 0) ? loss : 0;
+}
+
+inline void
+compute_sparse_tuple_loss_SVM(SortTuple* tp, Model* model)
+{
+	int y = tp->class_label;
+	double wx = dot_dss(model->w, tp->features_k, tp->features_v, tp->k_len);
+    double loss = 1 - y * wx;
+    return (loss > 0) ? loss : 0;
 }
 
 /*
@@ -919,7 +986,8 @@ ExecLimit(LimitState *node)
 						break;
 					}
 
-					compute_tuple_gradient_LR(&read_buffer[read_buf_indexes[j]], model, NULL);	
+
+					compute_tuple_gradient(&read_buffer[read_buf_indexes[j]], model);	
 				
 					if (i == 1)
 						model->tuple_num += 1;
@@ -941,7 +1009,7 @@ ExecLimit(LimitState *node)
 						break;
 					}
 
-					compute_tuple_gradient_LR(&read_buffer[j], model, NULL);	
+					compute_tuple_gradient(&read_buffer[j], model);	
 				
 					if (i == 1)
 						model->tuple_num += 1;
@@ -1001,7 +1069,7 @@ ExecLimit(LimitState *node)
 				// sgd_tuple->features = read_buffer[j].features_v;
 				// sgd_tuple->class_label = read_buffer[j].class_label;
 				// compute_tuple_accuracy(node->model, sgd_tuple, test_state);
-				compute_tuple_loss_LR(&read_buffer[j], model, NULL);
+				compute_tuple_loss(&read_buffer[j], model);
 			}
 
 			if (end_of_reach)
@@ -1478,6 +1546,18 @@ void compute_tuple_accuracy(Model* model, SGDTuple* tp, TestState* test_state) {
 	test_state->test_total_loss += tuple_loss;
 }
 
+
+bool is_prefix(char* table_name, char* prefix) {
+
+	while(*table_name && *prefix) {
+		if (*table_name != *prefix)
+			return false;
+		table_name++;
+		prefix++;
+	}
+
+	return true;
+}
 /* ----------------------------------------------------------------
  *		ExecInitLimit
  *
@@ -1497,7 +1577,7 @@ ExecInitLimit(Limit *node, EState *estate, int eflags)
 	const char* work_mem_str = GetConfigOption("work_mem", false, false);
 	elog(INFO, "============== Begin Training on %s Using %s Model ==============", set_table_name, set_model_name);
 	elog(INFO, "[Param] model_name = %s", set_model_name);
-	// elog(INFO, "[Param] run_test = %d", set_run_test);
+	elog(INFO, "[Param] use_malloc = %d", set_use_malloc);
 	elog(INFO, "[Param] shuffle = %d", set_shuffle);
 	elog(INFO, "[Param] work_mem = %s KB", work_mem_str);
 	elog(INFO, "[Param] block_page_num = %d pages", set_block_page_num);
@@ -1507,7 +1587,6 @@ ExecInitLimit(Limit *node, EState *estate, int eflags)
 	elog(INFO, "[Param] iter_num = %d", set_iter_num);
 	elog(INFO, "[Param] learning_rate = %f", set_learning_rate);
 
-
 	/*
 	 * create state structure
 	 */
@@ -1516,30 +1595,62 @@ ExecInitLimit(Limit *node, EState *estate, int eflags)
 	sgdstate->ps.state = estate;
     sgdstate->sgd_done = false;
 
-
+	bool dense = true;
 	int n_features;
-	if (strcmp(set_table_name, "dblife") == 0)
-		// for dblife
+
+	if (is_prefix(set_table_name, "dblife")) {
 		n_features = 41270; 
-	else if (strcmp(set_table_name, "forest") == 0)
-		// for forest
+		dense = false;
+	}
+	else if (strcmp(set_table_name, "splicesite")) {
+   	 	n_features = 11725480;
+		dense = false;
+	}
+	else if (strcmp(set_table_name, "kdd2012")) {
+   	 	n_features = 54686452;
+		dense = false;
+	}
+	else if (strcmp(set_table_name, "avazu")) {
+   	 	n_features = 1000000;
+		dense = false;
+	}
+	else if (strcmp(set_table_name, "criteo")) {
+   	 	n_features = 1000000;
+		dense = false;
+	}
+
+	else if (is_prefix(set_table_name, "forest"))
    	 	n_features = 54;
-    else if (strcmp(set_table_name, "higgs_1m") == 0)
-		// for higgs_1m
+    else if (is_prefix(set_table_name, "higgs"))
    	 	n_features = 28;
-	else if (strcmp(set_table_name, "higgs_1m_clustered") == 0)
-		// for higgs_1m
-   	 	n_features = 28;
-	else if (strcmp(set_table_name, "higgs_10m") == 0)
-		// for higgs_1m
-   	 	n_features = 28;
-	else if (strcmp(set_table_name, "higgs_10m_clustered") == 0)
-		// for higgs_1m
-   	 	n_features = 28;
+	else if (strcmp(set_table_name, "epsilon"))
+   	 	n_features = 2000;
 	
 
     sgdstate->model = init_model(n_features);
-	sgd_tupledesc = init_SGDTupleDesc(n_features);
+	sgd_tupledesc = init_SGDTupleDesc(n_features, dense);
+
+	if (strcmp(set_model_name, "LR") == 0 || strcmp(set_model_name, "lr") == 0) {
+		if (dense) {
+			compute_tuple_gradient = compute_dense_tuple_gradient_LR;
+			compute_tuple_loss = compute_dense_tuple_loss_LR;
+		} 
+		else {
+			compute_tuple_gradient = compute_sparse_tuple_gradient_LR;
+			compute_tuple_loss = compute_sparse_tuple_loss_LR;
+		}
+
+	} 
+	else if(strcmp(set_model_name, "SVM") == 0 || strcmp(set_model_name, "svm") == 0) {
+		if (dense) {
+			compute_tuple_gradient = compute_dense_tuple_gradient_SVM;
+			compute_tuple_loss = compute_dense_tuple_loss_SVM;
+		}
+		else {
+			compute_tuple_gradient = compute_sparse_tuple_gradient_SVM;
+			compute_tuple_loss = compute_sparse_tuple_loss_SVM;
+		}
+	}
 
 	elog(INFO, "[Model] Initialize %s model", sgdstate->model->model_name);
     // elog(INFO, "[SVM] loss = 0, p1 = 0, p2 = 0, gradient = 0, batch_size = 10, learning_rate = 0.1");

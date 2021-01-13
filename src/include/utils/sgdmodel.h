@@ -37,6 +37,7 @@ typedef struct SGDTupleDesc
 	int n_features;  // 8
 
 	int attr_num; // 3 for forest
+	bool dense;
 } SGDTupleDesc;
 
 
@@ -48,6 +49,7 @@ typedef struct
 	double*  features_v;
     int		 class_label;	/* the class label of a tuple, -1 if there is not any label */
 
+	int 	 sparse_array_len;
 	// the following variable are not used
 	//void	   *tuple;			/* the tuple proper */
 	// can be changed to feature/label Datum

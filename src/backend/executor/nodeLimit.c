@@ -278,6 +278,7 @@ static SGDTupleDesc* init_SGDTupleDesc(int n_features, bool dense) {
 		sgd_tupledesc->v_col = 2;
 		sgd_tupledesc->label_col = 3;
 		sgd_tupledesc->attr_num = 4;
+		
 	}
 	else {
 		/* for forest */
@@ -288,6 +289,7 @@ static SGDTupleDesc* init_SGDTupleDesc(int n_features, bool dense) {
 	}
 	
 	sgd_tupledesc->n_features = n_features;
+	sgd_tupledesc->dense = dense;
     return sgd_tupledesc;
 }
 

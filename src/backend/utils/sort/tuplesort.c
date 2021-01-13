@@ -676,6 +676,148 @@ my_parse_array_no_copy(struct varlena* input, int typesize, char** output) {
 }
 
 inline
+void dense_fast_transfer_slot_to_sgd_tuple (
+	Tuplesortstate *state, 
+	TupleTableSlot* slot, 
+	SortTuple* sort_tuple) {
+
+	//Assert(sort_tuple->features_v != NULL);
+	// store the values of slot to values/isnulls arrays
+	// int k_col = sgd_tupledesc->k_col;
+	// int v_col = sgd_tupledesc->v_col;
+	// int label_col = sgd_tupledesc->label_col;
+
+	// int attnum = HeapTupleHeaderGetNatts(slot->tts_tuple->t_data);
+	slot_deform_tuple(slot, sgd_tupledesc->attr_num);
+	
+	// e.g., features = [0.1, 0, 0.2, 0, 0, 0.3, 0, 0], class_label = -1
+	// Tuple = {10, {0, 2, 5}, {0.1, 0.2, 0.3}, -1}
+	Datum v_dat = slot->tts_values[sgd_tupledesc->v_col];
+	ArrayType  *v_array = DatumGetArrayTypeP(v_dat); // Datum{0.1, 0.2, 0.3}
+	
+	double *v;
+    int v_num = my_parse_array_no_copy((struct varlena*) v_array, 
+            sizeof(float8), (char **) &v);
+
+	Datum label_dat = slot->tts_values[sgd_tupledesc->label_col];
+	sort_tuple->class_label = DatumGetInt32(label_dat);
+
+	// 
+	// parse and copy features_v
+	// 
+	if (sort_tuple->features_v == NULL) {
+		int n_features = sgd_tupledesc->n_features;
+		if (set_use_malloc)
+			sort_tuple->features_v = (double *)malloc(n_features * sizeof(double));
+		else {
+			MemoryContext oldcontext = MemoryContextSwitchTo(state->shufflesortcontext);
+			sort_tuple->features_v = (double *)palloc(n_features * sizeof(double));
+			USEMEM(state, GetMemoryChunkSpace(sort_tuple->features_v));
+			MemoryContextSwitchTo(oldcontext);
+		}
+	}
+	// Assert(v_num == n_features);
+	memcpy(sort_tuple->features_v, v, v_num * sizeof(double));
+
+	sort_tuple->isnull = false;
+
+}
+
+inline
+void sparse_fast_transfer_slot_to_sgd_tuple (
+	Tuplesortstate *state, 
+	TupleTableSlot* slot, 
+	SortTuple* sort_tuple) {
+
+	//Assert(sort_tuple->features_v != NULL);
+	// store the values of slot to values/isnulls arrays
+	// int k_col = sgd_tupledesc->k_col;
+	// int v_col = sgd_tupledesc->v_col;
+	// int label_col = sgd_tupledesc->label_col;
+
+	// int attnum = HeapTupleHeaderGetNatts(slot->tts_tuple->t_data);
+	slot_deform_tuple(slot, sgd_tupledesc->attr_num);
+	
+	// e.g., features = [0.1, 0, 0.2, 0, 0, 0.3, 0, 0], class_label = -1
+	// Tuple = {10, {0, 2, 5}, {0.1, 0.2, 0.3}, -1}
+	Datum v_dat = slot->tts_values[sgd_tupledesc->v_col];
+	ArrayType  *v_array = DatumGetArrayTypeP(v_dat); // Datum{0.1, 0.2, 0.3}
+	
+	double *v;
+    int v_num = my_parse_array_no_copy((struct varlena*) v_array, 
+            sizeof(float8), (char **) &v);
+
+	Datum label_dat = slot->tts_values[sgd_tupledesc->label_col];
+	sort_tuple->class_label = DatumGetInt32(label_dat);
+
+	int n_features = sgd_tupledesc->n_features;
+
+	Datum k_dat = slot->tts_values[sgd_tupledesc->k_col];
+	ArrayType  *k_array = DatumGetArrayTypeP(k_dat);
+	int *k;
+    sort_tuple->k_len = my_parse_array_no_copy((struct varlena*) k_array, 
+            sizeof(int), (char **) &k);
+
+	Assert(sort_tuple->k_len == v_num);
+	// 
+	// parse and copy features_v
+	// 
+	if (sort_tuple->features_v == NULL) {
+		int multi = 10;
+		sort_tuple->sparse_array_len = multi * v_num;
+		if (set_use_malloc) {
+			sort_tuple->features_k = (int *)malloc(multi * v_num * sizeof(int));
+			sort_tuple->features_v = (double *)malloc(multi * v_num * sizeof(double));
+		}
+		else {
+			MemoryContext oldcontext = MemoryContextSwitchTo(state->shufflesortcontext);
+			sort_tuple->features_k = (int *)palloc(multi * v_num * sizeof(int));
+			sort_tuple->features_v = (double *)palloc(multi * v_num * sizeof(double));
+
+			USEMEM(state, GetMemoryChunkSpace(sort_tuple->features_v));
+			USEMEM(state, GetMemoryChunkSpace(sort_tuple->features_k));
+			MemoryContextSwitchTo(oldcontext);
+		}
+	}
+	else if (v_num > sort_tuple->sparse_array_len) {
+		elog(INFO, "v_num = %d > tuple->sparse_array_len = %d", v_num, sort_tuple->sparse_array_len);
+		int multi = 10;
+		if (set_use_malloc) {
+			sort_tuple->features_k = (int *)realloc(sort_tuple->features_k, multi * v_num * sizeof(int));
+			sort_tuple->features_v = (double *)realloc(sort_tuple->features_v, multi * v_num * sizeof(double));
+		}
+		else {
+			MemoryContext oldcontext = MemoryContextSwitchTo(state->shufflesortcontext);
+			FREEMEM(state, GetMemoryChunkSpace(sort_tuple->features_v));
+			FREEMEM(state, GetMemoryChunkSpace(sort_tuple->features_k));
+			sort_tuple->features_k = (int *)repalloc(sort_tuple->features_k, multi * v_num * sizeof(int));
+			sort_tuple->features_v = (double *)repalloc(sort_tuple->features_v, multi * v_num * sizeof(double));
+			USEMEM(state, GetMemoryChunkSpace(sort_tuple->features_v));
+			USEMEM(state, GetMemoryChunkSpace(sort_tuple->features_k));
+			MemoryContextSwitchTo(oldcontext);
+		}
+		sort_tuple->sparse_array_len = multi * v_num;
+	}
+
+	// Assert(v_num == n_features);
+	memcpy(sort_tuple->features_v, v, v_num * sizeof(double));
+	memcpy(sort_tuple->features_k, k, v_num * sizeof(int));
+	//sort_tuple->features_v = v;
+	
+	sort_tuple->isnull = false;
+
+	// for debug
+	// Datum did_dat = slot->tts_values[0];
+	// sort_tuple->did = DatumGetInt32(did_dat);
+
+	// if (sort_tuple->did == 309482) {
+	// 	elog(INFO, "After parsing: %d, {%f, %f, %f, %f}, %d", sort_tuple->did, sort_tuple->features_v[0], 
+	// 	sort_tuple->features_v[1], sort_tuple->features_v[2], sort_tuple->features_v[3], sort_tuple->class_label);
+	// }
+}
+
+/* commit id c6255d6
+inline
 void fast_transfer_slot_to_sgd_tuple (
 	Tuplesortstate *state, 
 	TupleTableSlot* slot, 
@@ -758,6 +900,7 @@ void fast_transfer_slot_to_sgd_tuple (
 	// 	sort_tuple->features_v[1], sort_tuple->features_v[2], sort_tuple->features_v[3], sort_tuple->class_label);
 	// }
 }
+*/
 
 bool
 tupleshufflesort_puttupleslot(Tuplesortstate *state, TupleTableSlot *slot) {
@@ -765,7 +908,10 @@ tupleshufflesort_puttupleslot(Tuplesortstate *state, TupleTableSlot *slot) {
 	bool write_buffer_full = false;
 
 	if (!TupIsNull(slot)) {
-		fast_transfer_slot_to_sgd_tuple(state, slot, &state->write_buffer[state->put_index]);
+		if (sgd_tupledesc->dense)
+			dense_fast_transfer_slot_to_sgd_tuple(state, slot, &state->write_buffer[state->put_index]);
+		else
+			sparse_fast_transfer_slot_to_sgd_tuple(state, slot, &state->write_buffer[state->put_index]);
 
 
 		// if (state->write_buffer[state->put_index].did == 309482) {

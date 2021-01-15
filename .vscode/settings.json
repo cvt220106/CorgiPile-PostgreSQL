@@ -11,6 +11,7 @@
         "__tuple": "c",
         "tuple": "c",
         "__node_handle": "c",
-        "random": "c"
+        "random": "c",
+        "functional": "c"
     }
 }

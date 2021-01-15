@@ -28,6 +28,7 @@
 #include "utils/guc.h"
 #include "access/tuptoaster.h"
 
+
 #include "utils/array.h"
 #include "time.h"
 #include "math.h"
@@ -672,6 +673,87 @@ transfer_slot_to_sgd_tuple_getattr (
 	
 }
 
+
+static void
+transfer_minituple_to_sgd_tuple (
+	SortTuple* sgd_tuple, 
+	SGDTupleDesc* sgd_tupledesc) {
+
+	int k_col = sgd_tupledesc->k_col;
+	int v_col = sgd_tupledesc->v_col;
+	int label_col = sgd_tupledesc->label_col;
+
+	
+	// sgd_tuple->features_v = heap_getattr(&htup, v_col, state->tupDesc, &stup->isnull1);
+
+	// int attnum = HeapTupleHeaderGetNatts(mtup->t_data);
+	// slot_deform_tuple(slot, sgd_tupledesc->attr_num);
+	
+	// e.g., features = [0.1, 0, 0.2, 0, 0, 0.3, 0, 0], class_label = -1
+	// Tuple = {10, {0, 2, 5}, {0.1, 0.2, 0.3}, -1}
+	// Datum v_dat = slot->tts_values[sgd_tupledesc->v_col];
+	Datum v_dat = sgd_tuple->features_v_datum;
+	ArrayType  *v_array = DatumGetArrayTypeP(v_dat); // Datum{0.1, 0.2, 0.3}
+	
+	double *v;
+    int v_num = my_parse_array_no_copy((struct varlena*) v_array, 
+            sizeof(float8), (char **) &v);
+
+	sgd_tuple->features_v = v;
+
+	// Datum label_dat = slot->tts_values[sgd_tupledesc->label_col];
+	// sort_tuple->class_label = DatumGetInt32(label_dat);
+
+	// bool isnull;
+	// slot_getallattrs(slot);
+	// // Datum v_dat = slot_getattr(slot, v_col + 1, &isnull);
+	// Datum v_dat = slot->tts_values[v_col];
+	// //
+	// // e.g., features = [0.1, 0, 0.2, 0, 0, 0.3, 0, 0], class_label = -1
+	// // Tuple = {10, {0, 2, 5}, {0.1, 0.2, 0.3}, -1}
+	// ArrayType  *v_array = DatumGetArrayTypeP(v_dat); // Datum{0.1, 0.2, 0.3}
+	
+	// double *v;
+    // int v_num = my_parse_array_no_copy((struct varlena*) v_array, 
+    //         sizeof(float8), (char **) &v);
+
+	// /* label dataum => int class_label */
+	// // Datum label_dat = heap_getattr(slot->tts_tuple, label_col + 1, slot->tts_tupleDescriptor, &isnull);
+	// // Datum label_dat = slot_getattr(slot, label_col + 1, &isnull);
+
+	// Datum label_dat = slot->tts_values[label_col];
+	// int label = DatumGetInt32(label_dat);
+	// sgd_tuple->class_label = label;
+
+
+	// /* double* v => double* features */
+	// double* features = sgd_tuple->features;
+	// int n_features = sgd_tupledesc->n_features;
+	
+	// // if sparse dataset
+	// if (k_col >= 0) {
+	// 	/* k Datum array => int* k */
+	// 	// Datum k_dat = heap_getattr(slot->tts_tuple, k_col + 1, slot->tts_tupleDescriptor, &isnull); // Datum{0, 2, 5}
+	// 	Datum k_dat = slot->tts_values[k_col];
+	// 	ArrayType  *k_array = DatumGetArrayTypeP(k_dat);
+	// 	int *k;
+    // 	int k_num = my_parse_array_no_copy((struct varlena*) k_array, 
+    //         	sizeof(int), (char **) &k);
+
+	// 	memset(features, 0, sizeof(double) * n_features);
+
+	// 	int i;
+	// 	for (i = 0; i < k_num; i++) {
+	// 		int f_index = k[i]; // {0, 2, 5}, k[1] = 2
+	// 		features[f_index] = v[i]; // {0.1, 0.2, 0.3}, features[2] = 0.2
+	// 	}
+	// }
+	
+	// else {
+	// 	memcpy(features, v, v_num * sizeof(double));
+	// }
+	
+}
 /*
 static void
 transfer_slot_to_sgd_tuple(
@@ -988,7 +1070,7 @@ ExecLimit(LimitState *node)
 						break;
 					}
 
-
+					transfer_minituple_to_sgd_tuple(&read_buffer[read_buf_indexes[j]], sgd_tupledesc);
 					compute_tuple_gradient(&read_buffer[read_buf_indexes[j]], model);	
 				
 					if (i == 1)
@@ -1011,6 +1093,7 @@ ExecLimit(LimitState *node)
 						break;
 					}
 
+					transfer_minituple_to_sgd_tuple(&read_buffer[j], sgd_tupledesc);
 					compute_tuple_gradient(&read_buffer[j], model);	
 				
 					if (i == 1)
@@ -1071,6 +1154,7 @@ ExecLimit(LimitState *node)
 				// sgd_tuple->features = read_buffer[j].features_v;
 				// sgd_tuple->class_label = read_buffer[j].class_label;
 				// compute_tuple_accuracy(node->model, sgd_tuple, test_state);
+				transfer_minituple_to_sgd_tuple(&read_buffer[j], sgd_tupledesc);
 				compute_tuple_loss(&read_buffer[j], model);
 			}
 
@@ -1604,19 +1688,19 @@ ExecInitLimit(Limit *node, EState *estate, int eflags)
 		n_features = 41270; 
 		dense = false;
 	}
-	else if (strcmp(set_table_name, "splicesite")) {
+	else if (is_prefix(set_table_name, "splicesite")) {
    	 	n_features = 11725480;
 		dense = false;
 	}
-	else if (strcmp(set_table_name, "kdd2012")) {
+	else if (is_prefix(set_table_name, "kdd2012")) {
    	 	n_features = 54686452;
 		dense = false;
 	}
-	else if (strcmp(set_table_name, "avazu")) {
+	else if (is_prefix(set_table_name, "avazu")) {
    	 	n_features = 1000000;
 		dense = false;
 	}
-	else if (strcmp(set_table_name, "criteo")) {
+	else if (is_prefix(set_table_name, "criteo")) {
    	 	n_features = 1000000;
 		dense = false;
 	}
@@ -1625,7 +1709,7 @@ ExecInitLimit(Limit *node, EState *estate, int eflags)
    	 	n_features = 54;
     else if (is_prefix(set_table_name, "higgs"))
    	 	n_features = 28;
-	else if (strcmp(set_table_name, "epsilon"))
+	else if (is_prefix(set_table_name, "epsilon"))
    	 	n_features = 2000;
 	
 

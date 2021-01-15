@@ -116,6 +116,7 @@
 #include "utils/tuplesort.h"
 
 #include "access/tuptoaster.h"
+#include "access/htup.h"
 #include "utils/array.h"
 
 
@@ -675,6 +676,100 @@ my_parse_array_no_copy(struct varlena* input, int typesize, char** output) {
     }
 }
 
+
+inline
+void dense_copy_slot_to_sgd_tuple (
+	Tuplesortstate *state, 
+	TupleTableSlot* slot, 
+	SortTuple* sort_tuple) {
+
+	HeapTupleData htup;
+
+	int k_col = sgd_tupledesc->k_col + 1;
+	int v_col = sgd_tupledesc->v_col + 1;
+	int label_col = sgd_tupledesc->label_col + 1;
+
+
+	if (sort_tuple->tuple == NULL) {
+		MemoryContext oldcontext = MemoryContextSwitchTo(state->shufflesortcontext);
+	
+		uint32		len;
+		Assert(slot->tts_tuple->t_len > MINIMAL_TUPLE_OFFSET);
+		len = slot->tts_tuple->t_len - MINIMAL_TUPLE_OFFSET;
+		sort_tuple->tuple = (MinimalTuple) palloc(len);
+		((MinimalTuple)(sort_tuple->tuple))->t_len = len;
+		USEMEM(state, GetMemoryChunkSpace(sort_tuple->tuple));
+		MemoryContextSwitchTo(oldcontext);
+	}
+
+	/* copy the tuple into sort storage */
+	//MemoryContext oldcontext = MemoryContextSwitchTo(state->shufflesortcontext);
+	uint32		len = slot->tts_tuple->t_len - MINIMAL_TUPLE_OFFSET;
+	memcpy(sort_tuple->tuple, (char *) slot->tts_tuple->t_data + MINIMAL_TUPLE_OFFSET, len);
+	
+	//USEMEM(state, GetMemoryChunkSpace(tuple));
+	//MemoryContextSwitchTo(oldcontext);
+
+
+	bool is_null;
+	/* set up first-column key value */
+	htup.t_len = len + MINIMAL_TUPLE_OFFSET;
+	htup.t_data = (HeapTupleHeader) ((char *) sort_tuple->tuple - MINIMAL_TUPLE_OFFSET);
+	sort_tuple->features_v_datum = heap_getattr(&htup, v_col, slot->tts_tupleDescriptor, &is_null);
+	sort_tuple->class_label = DatumGetInt32(heap_getattr(&htup, label_col, slot->tts_tupleDescriptor, &is_null));
+
+	
+
+	//Assert(sort_tuple->features_v != NULL);
+	// store the values of slot to values/isnulls arrays
+	// int k_col = sgd_tupledesc->k_col;
+	// int v_col = sgd_tupledesc->v_col;
+	// int label_col = sgd_tupledesc->label_col;
+
+	// int attnum = HeapTupleHeaderGetNatts(slot->tts_tuple->t_data);
+	// slot_deform_tuple(slot, sgd_tupledesc->attr_num);
+	
+	// // e.g., features = [0.1, 0, 0.2, 0, 0, 0.3, 0, 0], class_label = -1
+	// // Tuple = {10, {0, 2, 5}, {0.1, 0.2, 0.3}, -1}
+	// Datum v_dat = slot->tts_values[sgd_tupledesc->v_col];
+	// ArrayType  *v_array = DatumGetArrayTypeP(v_dat); // Datum{0.1, 0.2, 0.3}
+	
+	// double *v;
+    // int v_num = my_parse_array_no_copy((struct varlena*) v_array, 
+    //         sizeof(float8), (char **) &v);
+
+	// Datum label_dat = slot->tts_values[sgd_tupledesc->label_col];
+	// sort_tuple->class_label = DatumGetInt32(label_dat);
+
+	// // 
+	// // parse and copy features_v
+	// // 
+	// if (sort_tuple->features_v == NULL) {
+	// 	int n_features = sgd_tupledesc->n_features;
+	// 	if (set_use_malloc)
+	// 		sort_tuple->features_v = (double *)malloc(n_features * sizeof(double));
+	// 	else {
+	// 		MemoryContext oldcontext = MemoryContextSwitchTo(state->shufflesortcontext);
+	// 		sort_tuple->features_v = (double *)palloc(n_features * sizeof(double));
+	// 		USEMEM(state, GetMemoryChunkSpace(sort_tuple->features_v));
+	// 		MemoryContextSwitchTo(oldcontext);
+	// 	}
+	// }
+	// // Assert(v_num == n_features);
+	// memcpy(sort_tuple->features_v, v, v_num * sizeof(double));
+
+	sort_tuple->isnull = false;
+
+}
+
+inline
+void sparse_copy_slot_to_sgd_tuple (
+	Tuplesortstate *state, 
+	TupleTableSlot* slot, 
+	SortTuple* sort_tuple) {
+
+}
+
 inline
 void dense_fast_transfer_slot_to_sgd_tuple (
 	Tuplesortstate *state, 
@@ -909,9 +1004,11 @@ tupleshufflesort_puttupleslot(Tuplesortstate *state, TupleTableSlot *slot) {
 
 	if (!TupIsNull(slot)) {
 		if (sgd_tupledesc->dense)
-			dense_fast_transfer_slot_to_sgd_tuple(state, slot, &state->write_buffer[state->put_index]);
+			dense_copy_slot_to_sgd_tuple(state, slot, &state->write_buffer[state->put_index]);
+			// dense_fast_transfer_slot_to_sgd_tuple(state, slot, &state->write_buffer[state->put_index]);
 		else
-			sparse_fast_transfer_slot_to_sgd_tuple(state, slot, &state->write_buffer[state->put_index]);
+			sparse_copy_slot_to_sgd_tuple(state, slot, &state->write_buffer[state->put_index]);
+			// sparse_fast_transfer_slot_to_sgd_tuple(state, slot, &state->write_buffer[state->put_index]);
 
 
 		// if (state->write_buffer[state->put_index].did == 309482) {
@@ -1223,8 +1320,9 @@ tupleshufflesort_begin_common(int workMem)
 	for (i = 0; i < state->memtupsize; ++i) {
 		SortTuple null_tuple;
 		null_tuple.isnull = true;
-		null_tuple.features_v = NULL;
-		null_tuple.features_k = NULL;
+		//null_tuple.features_v = NULL;
+		//null_tuple.features_k = NULL;
+		null_tuple.tuple = NULL;
 
 		state->memtuples_buffer_1[i] = null_tuple;
 		state->memtuples_buffer_2[i] = null_tuple;

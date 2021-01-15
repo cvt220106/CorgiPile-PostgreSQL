@@ -47,13 +47,16 @@ typedef struct
 	int*	 features_k;		/* features of a tuple, n_dim */	
 	int		 k_len;
 	double*  features_v;
-    int		 class_label;	/* the class label of a tuple, -1 if there is not any label */
+    //int		 class_label;	/* the class label of a tuple, -1 if there is not any label */
 
 	int 	 sparse_array_len;
 	// the following variable are not used
-	//void	   *tuple;			/* the tuple proper */
+	void	   *tuple;			/* the tuple proper */
 	// can be changed to feature/label Datum
-	//Datum		datum1;			/* value of first key column */
+	Datum		features_k_datum;
+	Datum		features_v_datum;
+	int			class_label;		
+
 	//bool		isnull1;		/* is first key column NULL? */
 	//int			tupindex;		/* see notes above */
 

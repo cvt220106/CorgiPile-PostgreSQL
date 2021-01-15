@@ -435,7 +435,7 @@ compute_dense_tuple_loss_SVM(SortTuple* tp, Model* model)
 
 	double wx = dot(model->w, tp->features_v, model->n_features);
     double loss = 1 - y * wx;
-    return (loss > 0) ? loss : 0;
+    model->total_loss += (loss > 0) ? loss : 0;
 }
 
 inline void
@@ -444,7 +444,7 @@ compute_sparse_tuple_loss_SVM(SortTuple* tp, Model* model)
 	int y = tp->class_label;
 	double wx = dot_dss(model->w, tp->features_k, tp->features_v, tp->k_len);
     double loss = 1 - y * wx;
-    return (loss > 0) ? loss : 0;
+    model->total_loss += (loss > 0) ? loss : 0;
 }
 
 /*

@@ -1604,19 +1604,19 @@ ExecInitLimit(Limit *node, EState *estate, int eflags)
 		n_features = 41270; 
 		dense = false;
 	}
-	else if (strcmp(set_table_name, "splicesite")) {
+	else if (is_prefix(set_table_name, "splicesite")) {
    	 	n_features = 11725480;
 		dense = false;
 	}
-	else if (strcmp(set_table_name, "kdd2012")) {
+	else if (is_prefix(set_table_name, "kdd2012")) {
    	 	n_features = 54686452;
 		dense = false;
 	}
-	else if (strcmp(set_table_name, "avazu")) {
+	else if (is_prefix(set_table_name, "avazu")) {
    	 	n_features = 1000000;
 		dense = false;
 	}
-	else if (strcmp(set_table_name, "criteo")) {
+	else if (is_prefix(set_table_name, "criteo")) {
    	 	n_features = 1000000;
 		dense = false;
 	}
@@ -1625,7 +1625,7 @@ ExecInitLimit(Limit *node, EState *estate, int eflags)
    	 	n_features = 54;
     else if (is_prefix(set_table_name, "higgs"))
    	 	n_features = 28;
-	else if (strcmp(set_table_name, "epsilon"))
+	else if (is_prefix(set_table_name, "epsilon"))
    	 	n_features = 2000;
 	
 

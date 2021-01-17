@@ -1664,6 +1664,7 @@ typedef struct SortState
 	bool buffer_full_signal;
 	bool swap_finished_signal;
 
+	// TupleTableSlot * (*Exec_Sort_Func)(SortState *node);
 
 	//int 		rescan_count;
 } SortState;

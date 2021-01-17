@@ -32,8 +32,7 @@
 #include "time.h"
 #include "math.h"
 
-#define SHARED_MEM_SIZE (1 << 30)
-#define ARRAY_HEAD_SIZE (20)
+
 // guc variables
 // can be set via "SET VAR = XX" in the psql console
 int set_batch_size = DEFAULT_BATCH_SIZE;
@@ -47,41 +46,45 @@ int table_page_number = 0;
 char* set_table_name = DEFAULT_TABLE_NAME;
 
 bool set_run_test = false;
-bool set_shuffle = true;
+bool set_shuffle = DEFAULT_SET_SHUFFLE;
 bool is_training = true;
 
-bool set_use_malloc = false;
+bool set_use_malloc = DEFAULT_USE_MALLOC;
+bool set_use_train_buffer = DEFAULT_USE_TRAIN_BUFFER;
+bool set_use_test_buffer = DEFAULT_USE_TEST_BUFFER;
 
 SGDTupleDesc* sgd_tupledesc; // also used in nodeSort.c for parsing tuple_slot to double* features
 
 static Model* init_model(int n_features);
-static void ExecClearModel(Model* model);
-static SGDBatchState* init_SGDBatchState(int n_features);
-static SGDTuple* init_SGDTuple(int n_features);
+static void ExecFreeModel(Model* model);
+// static SGDBatchState* init_SGDBatchState(int n_features);
+// static SGDTuple* init_SGDTuple(int n_features);
+static SortTuple* init_SortTuple(int n_features);
 static SGDTupleDesc* init_SGDTupleDesc(int n_features, bool dense);
-static void clear_SGDBatchState(SGDBatchState* batchstate, int n_features);
-static void free_SGDBatchState(SGDBatchState* batchstate);
-static void free_SGDTuple(SGDTuple* sgd_tuple);
+// static void clear_SGDBatchState(SGDBatchState* batchstate, int n_features);
+// static void free_SGDBatchState(SGDBatchState* batchstate);
+//static void free_SGDTuple(SGDTuple* sgd_tuple);
+static void free_SortTuple(SortTuple* sort_tuple);
 static void free_SGDTupleDesc(SGDTupleDesc* sgd_tupledesc);
-static void compute_tuple_gradient_loss_LR(SGDTuple* tp, Model* model, SGDBatchState* batchstate);
-static void compute_tuple_gradient_loss_SVM(SGDTuple* tp, Model* model, SGDBatchState* batchstate);
+// static void compute_tuple_gradient_loss_LR(SGDTuple* tp, Model* model, SGDBatchState* batchstate);
+// static void compute_tuple_gradient_loss_SVM(SGDTuple* tp, Model* model, SGDBatchState* batchstate);
 
-static void compute_tuple_accuracy(Model* model, SGDTuple* tp, TestState* test_state);
-static void update_model(Model* model, SGDBatchState* batchstate);
-static void perform_SGD(Model *model, SGDTuple* sgd_tuple, SGDBatchState* batchstate, int i);
+// static void compute_tuple_accuracy(Model* model, SGDTuple* tp, TestState* test_state);
+// static void update_model(Model* model, SGDBatchState* batchstate);
+// static void perform_SGD(Model *model, SGDTuple* sgd_tuple, SGDBatchState* batchstate, int i);
 // static void transfer_slot_to_sgd_tuple(TupleTableSlot* slot, SGDTuple* sgd_tuple, SGDTupleDesc* sgd_tupledesc);
-static void fast_transfer_slot_to_sgd_tuple(TupleTableSlot* slot, SGDTuple* sgd_tuple, SGDTupleDesc* sgd_tupledesc);
-static void transfer_slot_to_sgd_tuple_getattr(TupleTableSlot* slot, SGDTuple* sgd_tuple, SGDTupleDesc* sgd_tupledesc);
+//static void fast_transfer_slot_to_sgd_tuple(TupleTableSlot* slot, SGDTuple* sgd_tuple, SGDTupleDesc* sgd_tupledesc);
+// static void transfer_slot_to_sgd_tuple_getattr(TupleTableSlot* slot, SGDTuple* sgd_tuple, SGDTupleDesc* sgd_tupledesc);
 
-static int my_parse_array_no_copy(struct varlena* input, int typesize, char** output);
+// static int my_parse_array_no_copy(struct varlena* input, int typesize, char** output);
 
 
 // static void compute_tuple_loss_LR(SortTuple* tp, Model* model, SGDBatchState* batchstate);
 // static void compute_tuple_gradient_LR(SortTuple* tp, Model* model, SGDBatchState* batchstate);
 
-
+// for selecting the gradient and loss computation function
 void	(*compute_tuple_gradient) (SortTuple *stup, Model* model) = NULL;
-void	(*compute_tuple_loss) ( SortTuple *stup, Model* model) = NULL;
+void	(*compute_tuple_loss) (SortTuple *stup, Model* model) = NULL;
 
 // from bismarck
 inline double
@@ -203,7 +206,6 @@ log_sum(const double a, const double b) {
 }
 
 
-
 Model* init_model(int n_features) {
     Model* model = (Model *) palloc(sizeof(Model));
 
@@ -214,21 +216,22 @@ Model* init_model(int n_features) {
 	model->learning_rate = set_learning_rate;
 	model->tuple_num = 0;
 	model->n_features = n_features;
+	model->decay = 0.95;
 	model->mu = 0.01;
 
     // use memorycontext later
 	model->w = (double *) palloc0(sizeof(double) * n_features);
 	//memset(model->w, 0, sizeof(double) * n_features);
-
     return model;
 }
 
-void ExecClearModel(Model* model) {
+void ExecFreeModel(Model* model) {
     // free(model->gradient);
 	pfree(model->w);
     pfree(model);
 }
 
+/*
 static SGDBatchState* init_SGDBatchState(int n_features) {
     SGDBatchState* batchstate = (SGDBatchState *) palloc(sizeof(SGDBatchState));
     batchstate->gradients = (double *) palloc0(sizeof(double) * n_features);
@@ -252,10 +255,23 @@ static TestState* init_TestState(bool run_test) {
     return test_state;
 }
 
+
 static SGDTuple* init_SGDTuple(int n_features) {
     SGDTuple* sgd_tuple = (SGDTuple *) palloc(sizeof(SGDTuple));
     //sgd_tuple->features = (double *) palloc0(sizeof(double) * n_features);
     return sgd_tuple;
+}
+*/
+
+
+static SortTuple* init_SortTuple(int n_features) {
+    SortTuple* sgd_tuple = (SortTuple *) palloc(sizeof(SortTuple));
+    //sgd_tuple->features = (double *) palloc0(sizeof(double) * n_features);
+    return sgd_tuple;
+}
+
+static void free_SortTuple(SortTuple* sort_tuple) {
+    pfree(sort_tuple);
 }
 
 static SGDTupleDesc* init_SGDTupleDesc(int n_features, bool dense) {
@@ -293,6 +309,7 @@ static SGDTupleDesc* init_SGDTupleDesc(int n_features, bool dense) {
     return sgd_tupledesc;
 }
 
+/*
 static void clear_SGDBatchState(SGDBatchState* batchstate, int n_features) {
 	int i;
 	for (i = 0; i < n_features; i++)
@@ -307,15 +324,18 @@ static void clear_TestState(TestState* test_state) {
 	test_state->test_total_loss = 0;
 }
 
+
 static void free_SGDBatchState(SGDBatchState* batchstate) {
     pfree(batchstate->gradients);
     pfree(batchstate);
 }
 
-static void free_SGDTuple(SGDTuple* sgd_tuple) {
+
+static void free_SGDTuple(SortTuple* sgd_tuple) {
     //pfree(sgd_tuple->features);
     pfree(sgd_tuple);
 }
+*/
 
 static void free_SGDTupleDesc(SGDTupleDesc* sgd_tupledesc) {
     // pfree(sgd_tupledesc->values);
@@ -323,9 +343,11 @@ static void free_SGDTupleDesc(SGDTupleDesc* sgd_tupledesc) {
 	pfree(sgd_tupledesc);
 }
 
+/*
 static void free_TestState(TestState* test_state) {
     pfree(test_state);
 }
+*/
 
 inline void
 compute_dense_tuple_gradient_LR(SortTuple* tp, Model* model)
@@ -343,7 +365,6 @@ compute_dense_tuple_gradient_LR(SortTuple* tp, Model* model)
     add_and_scale(model->w, n, x, c);
 
     // regularization
-    // double u = model->mu * model->learning_rate;
 	double u = model->mu * model->learning_rate;
     l1_shrink_mask_d(model->w, u, n);
 }
@@ -447,6 +468,8 @@ compute_sparse_tuple_loss_SVM(SortTuple* tp, Model* model)
     model->total_loss += (loss > 0) ? loss : 0;
 }
 
+
+
 /*
 static void
 compute_tuple_gradient_LR(SGDTuple* tp, Model* model, SGDBatchState* batchstate)
@@ -479,7 +502,7 @@ compute_tuple_gradient_LR(SGDTuple* tp, Model* model, SGDBatchState* batchstate)
 */
 
 
-
+/*
 static void
 compute_tuple_gradient_loss_SVM(SGDTuple* tp, Model* model, SGDBatchState* batchstate)
 {
@@ -532,7 +555,7 @@ static void update_model(Model* model, SGDBatchState* batchstate) {
 }
 
 static void perform_SGD(Model *model, SGDTuple* sgd_tuple, SGDBatchState* batchstate, int i) {
-    if (sgd_tuple == NULL) /* slot == NULL means the end of the table. */
+    if (sgd_tuple == NULL) // slot == NULL means the end of the table. 
         update_model(model, batchstate);
     else {
 		if (strcmp(model->model_name, "SVM") == 0)
@@ -552,7 +575,7 @@ static void perform_SGD(Model *model, SGDTuple* sgd_tuple, SGDBatchState* batchs
         
     }   
 }
-
+*/
 
 /*
 static void perform_SGD(Model *model, SGDTuple* sgd_tuple, SGDBatchState* batchstate, int i) {
@@ -576,7 +599,7 @@ static void perform_SGD(Model *model, SGDTuple* sgd_tuple, SGDBatchState* batchs
         
     }   
 }
-*/
+
 
 static void
 compute_tuple_gradient_loss_LR(SGDTuple* tp, Model* model, SGDBatchState* batchstate)
@@ -606,7 +629,9 @@ compute_tuple_gradient_loss_LR(SGDTuple* tp, Model* model, SGDBatchState* batchs
     batchstate->loss += tuple_loss;
 	batchstate->tuple_num += 1;
 }
+*/
 
+/*
 // Extract features and class label from Tuple
 static void
 transfer_slot_to_sgd_tuple_getattr (
@@ -634,7 +659,7 @@ transfer_slot_to_sgd_tuple_getattr (
     int v_num = my_parse_array_no_copy((struct varlena*) v_array, 
             sizeof(float8), (char **) &v);
 
-	/* label dataum => int class_label */
+	// label dataum => int class_label 
 	// Datum label_dat = heap_getattr(slot->tts_tuple, label_col + 1, slot->tts_tupleDescriptor, &isnull);
 	// Datum label_dat = slot_getattr(slot, label_col + 1, &isnull);
 
@@ -643,13 +668,13 @@ transfer_slot_to_sgd_tuple_getattr (
 	sgd_tuple->class_label = label;
 
 
-	/* double* v => double* features */
+	// double* v => double* features 
 	double* features = sgd_tuple->features;
 	int n_features = sgd_tupledesc->n_features;
 	
 	// if sparse dataset
 	if (k_col >= 0) {
-		/* k Datum array => int* k */
+		// k Datum array => int* k 
 		// Datum k_dat = heap_getattr(slot->tts_tuple, k_col + 1, slot->tts_tupleDescriptor, &isnull); // Datum{0, 2, 5}
 		Datum k_dat = slot->tts_values[k_col];
 		ArrayType  *k_array = DatumGetArrayTypeP(k_dat);
@@ -671,6 +696,7 @@ transfer_slot_to_sgd_tuple_getattr (
 	}
 	
 }
+*/
 
 /*
 static void
@@ -803,20 +829,18 @@ transfer_slot_to_sgd_tuple(
 // 	sgd_tuple->class_label = slot->label;
 // }
 
-/*
-static void
+inline void
 fast_transfer_slot_to_sgd_tuple (
 	TupleTableSlot* slot, 
-	SGDTuple* sgd_tuple, 
-	SGDTupleDesc* sgd_tupledesc) {
+	SortTuple* sgd_tuple) {
 
 	// store the values of slot to values/isnulls arrays
 	int k_col = sgd_tupledesc->k_col;
 	int v_col = sgd_tupledesc->v_col;
 	int label_col = sgd_tupledesc->label_col;
 
-	int attnum = HeapTupleHeaderGetNatts(slot->tts_tuple->t_data);
-	slot_deform_tuple(slot, attnum);
+	// int attnum = HeapTupleHeaderGetNatts(slot->tts_tuple->t_data);
+	slot_deform_tuple(slot, sgd_tupledesc->attr_num);
 	
 	
 	// e.g., features = [0.1, 0, 0.2, 0, 0, 0.3, 0, 0], class_label = -1
@@ -830,13 +854,11 @@ fast_transfer_slot_to_sgd_tuple (
 
 
 	Datum label_dat = slot->tts_values[label_col];
-	int label = DatumGetInt32(label_dat);
-	sgd_tuple->class_label = label;
-
+	sgd_tuple->class_label = DatumGetInt32(label_dat);
+	sgd_tuple->features_v = v;
 
 	// double* v => double* features 
-	double* features = sgd_tuple->features;
-	int n_features = sgd_tupledesc->n_features;
+	//int n_features = sgd_tupledesc->n_features;
 	// if sparse dataset
 	if (k_col >= 0) {
 		// k Datum array => int* k 
@@ -845,52 +867,12 @@ fast_transfer_slot_to_sgd_tuple (
 		int *k;
     	int k_num = my_parse_array_no_copy((struct varlena*) k_array, 
             	sizeof(int), (char **) &k);
-
-		memset(features, 0, sizeof(double) * n_features);
-
-		for (int i = 0; i < k_num; i++) {
-			int f_index = k[i]; // {0, 2, 5}, k[1] = 2
-			features[f_index] = v[i]; // {0.1, 0.2, 0.3}, features[2] = 0.2
-		}
+		sgd_tuple->features_k = k;
+		sgd_tuple->k_len = k_num;
 	}
-	
-	else {
-		//sgd_tuple->features = v;
-		memcpy(features, v, v_num * sizeof(double));
-	}
-	
 }
-*/
 
-/**
- * From bismarck
- * parse the array by NO PALLOC? 
- *
- * args:
- *   input struct varlena*, variable length struct pointer
- *   typesize int, size of element type
- *   output (void*)*, start pointer of the array elements
- * return:
- *   int, length of the array, # of elements
- */
-static int 
-my_parse_array_no_copy(struct varlena* input, int typesize, char** output) {
-	// elog(WARNING, "Inside loss(), for v, ISEXTERNAL %d, ISCOMPR %d, ISHORT %d, varsize_short %d", VARATT_IS_EXTERNAL(v2) ? 1 : 0, VARATT_IS_COMPRESSED(v2)  ? 1 : 0, VARATT_IS_SHORT(v2)  ? 1 : 0, VARSIZE_SHORT(v2));
-	// elog(WARNING, "Inside loss(), for v, varlena = %x", input);
-	
-	if (VARATT_IS_EXTERNAL(input) || VARATT_IS_COMPRESSED(input)) {
-		// if compressed, palloc is necessary
-		input = heap_tuple_untoast_attr(input);
-        *output = VARDATA(input) + ARRAY_HEAD_SIZE;
-        return (VARSIZE(input) - VARHDRSZ - ARRAY_HEAD_SIZE) / typesize;
-	} else if (VARATT_IS_SHORT(input)) {
-        *output = VARDATA_SHORT(input) + ARRAY_HEAD_SIZE;
-        return (VARSIZE_SHORT(input) - VARHDRSZ_SHORT - ARRAY_HEAD_SIZE) / typesize;
-    } else {
-        *output = VARDATA(input) + ARRAY_HEAD_SIZE;
-        return (VARSIZE(input) - VARHDRSZ - ARRAY_HEAD_SIZE) / typesize;
-    }
-}
+
 /* ----------------------------------------------------------------
  *		ExecLimit
  *
@@ -898,6 +880,175 @@ my_parse_array_no_copy(struct varlena* input, int typesize, char** output) {
  *		filtering on the stream of tuples returned by a subplan.
  * ----------------------------------------------------------------
  */
+inline
+void train_with_shuffled_buffer(PlanState *outerNode, Model* model, int iter) {
+	bool end_of_reach = false;
+
+	while(true) {
+		// get a tuple from ShuffleSortNode
+		TupleTableSlot* slot = ExecProcNode(outerNode);
+
+		SortTuple *read_buffer = slot->read_buffer;
+		int buffer_size = slot->read_buffer_size;
+		int *read_buf_indexes = slot->read_buf_indexes;
+
+		int j;
+
+		for (j = 0; j < buffer_size; ++j) {
+			if (read_buffer[read_buf_indexes[j]].isnull) {
+				if (iter == 1) {
+					double avg_page_tuple_num = (double) model->tuple_num / table_page_number;
+					elog(INFO, "[Computed Param] table_tuple_num = %d, buffer_block_num = %.2f", 
+						model->tuple_num, 
+						(double) set_buffer_tuple_num / (set_block_page_num * avg_page_tuple_num));
+				}
+
+				end_of_reach = true;
+				ExecReScan(outerNode);	
+				break;
+			}
+
+			compute_tuple_gradient(&read_buffer[read_buf_indexes[j]], model);	
+				
+			if (iter == 1)
+				model->tuple_num += 1;
+		}
+	
+		if (end_of_reach)
+			break;
+	}
+}
+
+inline
+void train_with_unshuffled_buffer(PlanState *outerNode, Model* model, int iter) {
+	bool end_of_reach = false;
+
+	while(true) {
+		// get a tuple from ShuffleSortNode
+		TupleTableSlot* slot = ExecProcNode(outerNode);
+
+		SortTuple *read_buffer = slot->read_buffer;
+		int buffer_size = slot->read_buffer_size;
+
+		int j;
+		for (j = 0; j < buffer_size; ++j) {
+			if (read_buffer[j].isnull) {
+				if (iter == 1) {
+					double avg_page_tuple_num = (double) model->tuple_num / table_page_number;
+					elog(INFO, "[Computed Param] table_tuple_num = %d, buffer_block_num = %.2f", 
+						model->tuple_num, 
+						(double) set_buffer_tuple_num / (set_block_page_num * avg_page_tuple_num));
+				}
+
+				end_of_reach = true;
+				ExecReScan(outerNode);	
+				break;
+			}
+
+			compute_tuple_gradient(&read_buffer[j], model);	
+				
+			if (iter == 1)
+				model->tuple_num += 1;
+		}
+	
+		if (end_of_reach)
+			break;
+	}
+}
+
+inline
+void test_with_unshuffled_buffer(PlanState *outerNode, Model* model, int iter, 
+								 int total_iter_num, clock_t iter_start) {
+
+	bool end_of_reach = false;
+
+	while(true) {
+		TupleTableSlot* slot = ExecProcNode(outerNode);
+
+		SortTuple *read_buffer = slot->read_buffer;
+		int buffer_size = slot->read_buffer_size;
+
+		int j;
+		for (j = 0; j < buffer_size; ++j) {
+			if (read_buffer[j].isnull) {
+				clock_t iter_finish = clock();
+				double iter_exec_time = (double)(iter_finish - iter_start) / CLOCKS_PER_SEC; 
+					
+				elog(INFO, "[Iter %2d] Loss = %.2f, exec_t = %.2fs", 
+					iter, model->total_loss, iter_exec_time);
+			
+				model->total_loss = 0;
+				end_of_reach = true;
+				if (iter < total_iter_num)  // finish
+					ExecReScan(outerNode);		
+
+				break;
+			}
+
+			compute_tuple_loss(&read_buffer[j], model);
+		}
+
+		if (end_of_reach)
+			break;
+	}
+}
+
+inline
+void train_without_buffer(PlanState *outerNode, Model* model, int iter, SortTuple* sort_tuple) {
+
+	while(true) {
+		TupleTableSlot* slot = ExecProcNode(outerNode);
+
+		if (TupIsNull(slot)) {
+			if (iter == 1) {
+				double avg_page_tuple_num = (double) model->tuple_num / table_page_number;
+				elog(INFO, "[Computed Param] table_tuple_num = %d, buffer_block_num = %.2f", 
+					model->tuple_num, 
+					(double) set_buffer_tuple_num / (set_block_page_num * avg_page_tuple_num));
+			}
+
+			ExecReScan(outerNode);	
+			break;
+		}
+
+		fast_transfer_slot_to_sgd_tuple(slot, sort_tuple);
+		compute_tuple_loss(sort_tuple, model);	
+				
+		if (iter == 1)
+			model->tuple_num += 1;
+	}
+}
+
+inline
+void test_without_buffer(PlanState *outerNode, Model* model, int iter, 
+						int total_iter_num, clock_t iter_start, 
+						SortTuple* sort_tuple) {
+
+	bool end_of_reach = false;
+
+	while(true) {
+		TupleTableSlot* slot = ExecProcNode(outerNode);
+
+		if (TupIsNull(slot)) {
+			clock_t iter_finish = clock();
+			double iter_exec_time = (double)(iter_finish - iter_start) / CLOCKS_PER_SEC; 
+					
+			elog(INFO, "[Iter %2d] Loss = %.2f, exec_t = %.2fs", 
+				iter, model->total_loss, iter_exec_time);
+			
+			model->total_loss = 0;
+			end_of_reach = true;
+			if (iter < total_iter_num)  // finish
+				ExecReScan(outerNode);		
+
+			break;
+		}
+
+		fast_transfer_slot_to_sgd_tuple(slot, sort_tuple);
+		compute_tuple_loss(sort_tuple, model);
+	}
+}
+
 
 
 TupleTableSlot *				
@@ -915,8 +1066,10 @@ ExecLimit(LimitState *node)
 	 * If first time through, read all tuples from outer plan and pass them to
 	 * tuplesort.c. Subsequent calls just fetch tuples from tuplesort.
 	 */
-	SGDBatchState* batchstate = init_SGDBatchState(model->n_features);
-	// SGDTuple* sgd_tuple = init_SGDTuple(model->n_features);
+	// SGDBatchState* batchstate = init_SGDBatchState(model->n_features);
+	//SGDTuple* sgd_tuple = init_SGDTuple(model->n_features);
+	SortTuple* sort_tuple = init_SortTuple(model->n_features);
+	
 	// TestState* test_state = init_TestState(set_run_test);
 
 	PlanState  *outerNode;
@@ -933,19 +1086,104 @@ ExecLimit(LimitState *node)
 	// int col_num = tupDesc->natts;
                                               
 	// node->tupleShuffleSortState = (void *) tupleShuffleSortState;
-
 	int iter_num = model->iter_num;
     // int batch_size = node->model->batch_size;
-
-
 
 	// for counting execution time for each iteration
 	clock_t iter_start, iter_finish;
 	double iter_exec_time;
 
-	// for counting data parsing time
-	// clock_t parse_start, parse_finish;
-	// double parse_time = 0;
+
+	int i;
+	for (i = 1; i <= iter_num; i++) {
+		iter_start = clock();
+
+		// train
+		is_training = true;
+
+		if (set_use_train_buffer) {
+			if (set_shuffle)
+				train_with_shuffled_buffer(outerNode, model, i);
+			else
+				train_with_unshuffled_buffer(outerNode, model, i);
+		}
+		else
+			train_without_buffer(outerNode, model, i, sort_tuple);
+		
+		// update learning_rate
+		model->learning_rate = model->learning_rate * model->decay;
+
+
+		// test
+		is_training = false;
+		if (set_use_test_buffer)
+			test_with_unshuffled_buffer(outerNode, model, i, iter_num, iter_start);
+		else
+			test_without_buffer(outerNode, model, i, iter_num, iter_start, sort_tuple);
+
+	}
+
+	// clear states
+	free_SortTuple(sort_tuple);
+	free_SGDTupleDesc(sgd_tupledesc);
+
+	// for debug
+	//fclose(fp);
+
+	node->sgd_done = true;
+	SO1_printf("ExecSGD: %s\n", "Performing SGD done");
+
+	// Get the first or next tuple from tuplesort. Returns NULL if no more tuples.
+
+    // node->ps.ps_ResultTupleSlot; // = Model->w, => ExecStoreMinimalTuple();
+	// slot = node->ps.ps_ResultTupleSlot;
+	// elog(INFO, "[Model total loss %f]", model->total_loss);
+
+	// slot = output_model_record(node->ps.ps_ResultTupleSlot, model);
+	
+	slot = NULL;
+	return slot;
+}
+
+/*
+
+TupleTableSlot *				
+ExecLimit(LimitState *node)
+{
+	EState	   *estate;
+	TupleTableSlot *slot;
+	Model* model = node->model;
+
+	SO1_printf("ExecSGD: %s\n", "entering routine");
+
+	estate = node->ps.state;
+
+	// SGDBatchState* batchstate = init_SGDBatchState(model->n_features);
+	//SGDTuple* sgd_tuple = init_SGDTuple(model->n_features);
+	SortTuple* sort_tuple = init_SortTuple(model->n_features);
+	
+	// TestState* test_state = init_TestState(set_run_test);
+
+	PlanState  *outerNode;
+	TupleDesc	tupDesc;
+
+	SO1_printf("ExecSGD: %s\n", "SGD iteration ");
+
+	estate->es_direction = ForwardScanDirection;
+
+	// outerNode = ShuffleSortNode
+	outerNode = outerPlanState(node);
+	// tupDesc is the TupleDesc of the previous node
+	tupDesc = ExecGetResultType(outerNode);
+	// int col_num = tupDesc->natts;
+                                              
+	// node->tupleShuffleSortState = (void *) tupleShuffleSortState;
+	int iter_num = model->iter_num;
+    // int batch_size = node->model->batch_size;
+
+	// for counting execution time for each iteration
+	clock_t iter_start, iter_finish;
+	double iter_exec_time;
 
 	// for counting the computation time
 	// clock_t comp_start, comp_finish;
@@ -1024,7 +1262,7 @@ ExecLimit(LimitState *node)
 		}
 
 		// decay the learning rate with 0.95^iter_num
-		model->learning_rate = model->learning_rate * 0.95;
+		model->learning_rate = model->learning_rate * model->decay;
 
 		// 
 		// compute the loss 
@@ -1036,46 +1274,47 @@ ExecLimit(LimitState *node)
 		while(true) {
 			slot = ExecProcNode(outerNode);
 			
-			SortTuple *read_buffer = slot->read_buffer;
-			int buffer_size = slot->read_buffer_size;
-
-			int j;
-			for (j = 0; j < buffer_size; ++j) {
-				if (read_buffer[j].isnull) {
-
-					iter_finish = clock();
-					iter_exec_time = (double)(iter_finish - iter_start) / CLOCKS_PER_SEC; 
-					//double read_time = iter_exec_time - parse_time - comp_time;
-					// elog(INFO, "[Iter %2d] Loss = %.2f, exec_t = %.2fs, read_t = %.2fs, parse_t = %.2fs, comp_t = %.2fs", 
-					// 		i, model->total_loss, iter_exec_time, read_time, parse_time, comp_time);
-					elog(INFO, "[Iter %2d] Loss = %.2f, exec_t = %.2fs", 
+			if (TupIsNull(slot)) {
+				iter_finish = clock();
+				iter_exec_time = (double)(iter_finish - iter_start) / CLOCKS_PER_SEC; 
+					
+				elog(INFO, "[Iter %2d] Loss = %.2f, exec_t = %.2fs", 
 							i, model->total_loss, iter_exec_time);
 			
-					model->total_loss = 0;
-					end_of_reach = true;
-					if (i == iter_num) { // finish
-						free_SGDBatchState(batchstate);
-						//free_SGDTuple(sgd_tuple);
-						free_SGDTupleDesc(sgd_tupledesc);
-						//free_TestState(test_state);
-						break;	
-					}
-					else { // for the next iteration
-						// clear_TestState(test_state);
-						ExecReScan(outerNode);	
-						break;
-					}
+				model->total_loss = 0;
+				end_of_reach = true;
+				if (i == iter_num) { // finish
+					free_SGDBatchState(batchstate);
+					//free_SGDTuple(sgd_tuple);
+					free_SGDTupleDesc(sgd_tupledesc);
+					//free_TestState(test_state);
+					break;	
 				}
+				else { // for the next iteration
+					// clear_TestState(test_state);
+					ExecReScan(outerNode);	
+					break;
+				}
+			}
+			// SortTuple *read_buffer = slot->read_buffer;
+			// int buffer_size = slot->read_buffer_size;
+			fast_transfer_slot_to_sgd_tuple(slot, sort_tuple, sgd_tupledesc);
+
+			//int j;
+			//for (j = 0; j < buffer_size; ++j) {
+			//	if (read_buffer[j].isnull) {
+
+				
 
 				// fast_transfer_slot_to_sgd_tuple(slot, sgd_tuple, sgd_tupledesc);
 				// sgd_tuple->features = read_buffer[j].features_v;
 				// sgd_tuple->class_label = read_buffer[j].class_label;
 				// compute_tuple_accuracy(node->model, sgd_tuple, test_state);
-				compute_tuple_loss(&read_buffer[j], model);
-			}
+			compute_tuple_loss(sort_tuple, model);
+			//}
 
-			if (end_of_reach)
-				break;
+			//if (end_of_reach)
+			//	break;
 			
 		}
 
@@ -1098,6 +1337,7 @@ ExecLimit(LimitState *node)
 	slot = NULL;
 	return slot;
 }
+*/
 
 /*
 TupleTableSlot *				
@@ -1493,6 +1733,7 @@ ExecLimit(LimitState *node)
 }
 */
 
+/*
 void compute_tuple_accuracy(Model* model, SGDTuple* tp, TestState* test_state) {
 	double y = tp->class_label;
     double* x = tp->features;
@@ -1548,7 +1789,7 @@ void compute_tuple_accuracy(Model* model, SGDTuple* tp, TestState* test_state) {
 	test_state->test_total_loss += tuple_loss;
 }
 
-
+*/
 bool is_prefix(char* table_name, char* prefix) {
 
 	while(*table_name && *prefix) {
@@ -1560,6 +1801,7 @@ bool is_prefix(char* table_name, char* prefix) {
 
 	return true;
 }
+
 /* ----------------------------------------------------------------
  *		ExecInitLimit
  *
@@ -1581,6 +1823,8 @@ ExecInitLimit(Limit *node, EState *estate, int eflags)
 	elog(INFO, "[Param] model_name = %s", set_model_name);
 	elog(INFO, "[Param] use_malloc = %d", set_use_malloc);
 	elog(INFO, "[Param] shuffle = %d", set_shuffle);
+	elog(INFO, "[Param] use_train_buffer = %d", set_use_train_buffer);
+	elog(INFO, "[Param] use_test_buffer = %d", set_use_test_buffer);
 	elog(INFO, "[Param] work_mem = %s KB", work_mem_str);
 	elog(INFO, "[Param] block_page_num = %d pages", set_block_page_num);
 	// elog(INFO, "[Param] io_block_size = %d pages", set_io_big_block_size);
@@ -1708,7 +1952,7 @@ ExecEndLimit(LimitState *node)
 	 */
 	ExecClearTuple(node->ps.ps_ResultTupleSlot);
 
-	ExecClearModel(node->model);
+	ExecFreeModel(node->model);
 
 	ExecEndNode(outerPlanState(node));
 

@@ -160,6 +160,7 @@ ExecInitSort(Sort *node, EState *estate, int eflags)
 	sortstate->ss.ps.plan = (Plan *) node; // change to node->plan
 	sortstate->ss.ps.state = estate;
 
+
 	/*
 	 * We must have random access to the sort output to do backward scan or
 	 * mark/restore.  We also prefer to materialize the sort output if we
@@ -334,8 +335,16 @@ ExecSort(SortState *node)
 */
 
 
+inline
 TupleTableSlot *
-ExecSort(SortState *node)
+Exec_Unbuffered_Sort(SortState *node) {
+	PlanState  *outerNode = outerPlanState(node);
+    return ExecProcNode(outerNode);
+}
+
+inline
+TupleTableSlot *
+Exec_Buffered_Sort(SortState *node)
 {
 	// EState	   *estate = node->ss.ps.state;
 	// ScanDirection dir = estate->es_direction; // going to be set to ShuffleScanDirection
@@ -403,7 +412,8 @@ ExecEndSort(SortState *node)
 	//elog(LOG, "end ExecClearTuple ps_ResultTupleSlot.");
 
 	//elog(INFO, "begin free_buffer.");
-	free_buffer(node->tuplesortstate);
+	if (set_use_train_buffer || set_use_test_buffer)
+		free_buffer(node->tuplesortstate);
 	//elog(INFO, "end free_buffer.");
 	/*
 	 * Release tuplesort resources
@@ -421,11 +431,31 @@ ExecEndSort(SortState *node)
 	SO1_printf("ExecEndSort: %s\n",
 			   "sort node shutdown");
 
-	Assert(pthread_mutex_destroy(&buffer_mutex) == 0);
-    Assert(pthread_mutex_destroy(&swap_mutex) == 0);
-    Assert(pthread_cond_destroy(&buffer_full_cond) == 0);
-    Assert(pthread_cond_destroy(&swap_finished_cond) == 0);
+	if (set_use_train_buffer || set_use_test_buffer) {
+		Assert(pthread_mutex_destroy(&buffer_mutex) == 0);
+    	Assert(pthread_mutex_destroy(&swap_mutex) == 0);
+    	Assert(pthread_cond_destroy(&buffer_full_cond) == 0);
+    	Assert(pthread_cond_destroy(&swap_finished_cond) == 0);
+	}
 }
+
+TupleTableSlot *
+ExecSort(SortState *node)
+{
+	if (is_training) {
+		if (set_use_train_buffer)
+			return Exec_Buffered_Sort(node);
+		else
+			return Exec_Unbuffered_Sort(node);
+	}
+	else {
+		if (set_use_test_buffer)
+			return Exec_Buffered_Sort(node);
+		else
+			return Exec_Unbuffered_Sort(node);
+	}
+}
+
 
 /* ----------------------------------------------------------------
  *		ExecSortMarkPos
@@ -479,7 +509,12 @@ ExecReScanSort(SortState *node)
 
 	/* must drop pointer to sort result tuple */
 	ExecClearTuple(node->ss.ps.ps_ResultTupleSlot);
-	reset_sort_state(node);
+
+	if (is_training && set_use_train_buffer)
+		reset_sort_state(node);
+	
+	if (is_training == false && set_use_test_buffer)
+		reset_sort_state(node);
 
 	// Assert(pthread_mutex_destroy(&buffer_mutex) == 0);
     // Assert(pthread_mutex_destroy(&swap_mutex) == 0);

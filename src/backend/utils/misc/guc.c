@@ -684,7 +684,7 @@ static struct config_bool ConfigureNamesBool[] =
 			NULL
 		},
 		&set_shuffle,
-		true,
+		DEFAULT_SET_SHUFFLE,
 		NULL, NULL, NULL
 	},
 	{
@@ -693,7 +693,25 @@ static struct config_bool ConfigureNamesBool[] =
 			NULL
 		},
 		&set_use_malloc,
-		false,
+		DEFAULT_USE_MALLOC,
+		NULL, NULL, NULL
+	},
+	{
+		{"use_train_buffer", PGC_USERSET, DB_ML,
+			gettext_noop("Use buffer based training."),
+			NULL
+		},
+		&set_use_train_buffer,
+		DEFAULT_USE_TRAIN_BUFFER,
+		NULL, NULL, NULL
+	},
+	{
+		{"use_test_buffer", PGC_USERSET, DB_ML,
+			gettext_noop("Use buffer based testing."),
+			NULL
+		},
+		&set_use_test_buffer,
+		DEFAULT_USE_TEST_BUFFER,
 		NULL, NULL, NULL
 	},
 	// added end

@@ -238,6 +238,8 @@ struct Tuplesortstate
 	 */
 	void		(*copytup) (Tuplesortstate *state, SortTuple *stup, void *tup);
 
+	void (*fast_transfer_slot_to_sgd_tuple) (Tuplesortstate *state, TupleTableSlot* slot, SortTuple* sort_tuple);
+
 	/*
 	 * Function to write a stored tuple onto tape.  The representation of the
 	 * tuple on tape need not be the same as it is in memory; requirements on
@@ -283,7 +285,6 @@ struct Tuplesortstate
 
 	int			*read_buf_indexes;
 	int			*final_read_buf_indexes; // when buffer is partially filled in the end
-
 
 	int			write_buf_count;	/* number of tuples currently present */
 	int			read_buf_count;
@@ -526,6 +527,7 @@ shuffle_tuple(SortTuple *a, size_t n)
 
 }
 
+inline
 void shuffle_read_buf_indexes(int* read_buf, int read_buf_count) {
 	srand(time(0) + rand());
 	int i;
@@ -908,12 +910,7 @@ tupleshufflesort_puttupleslot(Tuplesortstate *state, TupleTableSlot *slot) {
 	bool write_buffer_full = false;
 
 	if (!TupIsNull(slot)) {
-		if (sgd_tupledesc->dense)
-			dense_fast_transfer_slot_to_sgd_tuple(state, slot, &state->write_buffer[state->put_index]);
-		else
-			sparse_fast_transfer_slot_to_sgd_tuple(state, slot, &state->write_buffer[state->put_index]);
-
-
+		state->fast_transfer_slot_to_sgd_tuple(state, slot, &state->write_buffer[state->put_index]);
 		// if (state->write_buffer[state->put_index].did == 309482) {
 		// 	SortTuple t = state->write_buffer[state->put_index];
 		// 	elog(INFO, "into_buffer: %d, {%f, %f, %f, %f}, %d", t.did, t.features_v[0], 
@@ -1197,10 +1194,18 @@ tupleshufflesort_begin_common(int workMem)
 		state->read_buf_indexes = (int *) palloc(state->memtupsize * sizeof(int));
 	}
 	
+	SortTuple null_tuple;
+	null_tuple.isnull = true;
+	null_tuple.features_v = NULL;
+	null_tuple.features_k = NULL;
 
 	int j;
-	for (j = 0; j < state->memtupsize; ++j)
+	for (j = 0; j < state->memtupsize; ++j) {
 		state->read_buf_indexes[j] = j;
+
+		state->memtuples_buffer_1[j] = null_tuple;
+		state->memtuples_buffer_2[j] = null_tuple;
+	}
 
 	shuffle_read_buf_indexes(state->read_buf_indexes, state->memtupsize);
 
@@ -1218,7 +1223,7 @@ tupleshufflesort_begin_common(int workMem)
 		state->memtuples_buffer_1[i].features = (double *)palloc(54 * sizeof(double));
 		state->memtuples_buffer_2[i].features = (double *)palloc(54 * sizeof(double));
 	}
-	*/
+	
 	int i;
 	for (i = 0; i < state->memtupsize; ++i) {
 		SortTuple null_tuple;
@@ -1229,6 +1234,7 @@ tupleshufflesort_begin_common(int workMem)
 		state->memtuples_buffer_1[i] = null_tuple;
 		state->memtuples_buffer_2[i] = null_tuple;
 	}
+	*/
 
 	if (set_use_malloc == false) {
 		USEMEM(state, GetMemoryChunkSpace(state->memtuples_buffer_1));
@@ -1261,6 +1267,10 @@ Tuplesortstate *
 tupleshufflesort_begin_heap(TupleDesc tupDesc, int workMem)
 {
 	Tuplesortstate *state = tupleshufflesort_begin_common(workMem);
+	if (sgd_tupledesc->dense)
+		state->fast_transfer_slot_to_sgd_tuple = dense_fast_transfer_slot_to_sgd_tuple;
+	else
+		state->fast_transfer_slot_to_sgd_tuple = sparse_fast_transfer_slot_to_sgd_tuple;
 	//MemoryContext oldcontext;
 	// int			i;
 
@@ -1274,7 +1284,7 @@ tupleshufflesort_begin_heap(TupleDesc tupDesc, int workMem)
 	// 							false,	/* no unique check */
 	// 							workMem);
 	// state->comparetup = comparetup_heap;
-	state->copytup = copytup_heap;
+	// state->copytup = copytup_heap;
 	// state->writetup = writetup_heap;
 	// state->readtup = readtup_heap;
 	// state->reversedirection = reversedirection_heap;
@@ -1492,11 +1502,6 @@ tupleshufflesort_performshuffle(Tuplesortstate *state)
 		++state->read_buf_count;
 	}
 */
-
-
-	// finish = clock();    
-   	// double duration = (double)(finish - start) / CLOCKS_PER_SEC;    
-   	// elog(INFO, "[shuffle %d tuples] %f seconds\n", n, duration);      
 }
 
 /*

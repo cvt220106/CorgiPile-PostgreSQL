@@ -14,6 +14,12 @@
 #define DEFAULT_MODEL_NAME "LR"
 #define DEFAULT_TABLE_NAME "forest"
 
+#define DEFAULT_SET_SHUFFLE true
+#define DEFAULT_USE_MALLOC false
+#define DEFAULT_USE_TRAIN_BUFFER true
+#define DEFAULT_USE_TEST_BUFFER false
+
+
 
 typedef struct Model {
     char* model_name;
@@ -21,6 +27,7 @@ typedef struct Model {
 	double* w;
     int batch_size;
     double learning_rate;
+	double decay;
 	double mu; // for regularization
     double n_features;
     int iter_num;
@@ -82,9 +89,13 @@ extern bool set_run_test;
 extern bool set_shuffle;
 extern bool set_use_malloc;
 
+extern bool set_use_train_buffer;
+extern bool set_use_test_buffer;
+
 extern SGDTupleDesc* sgd_tupledesc;
 
 extern bool is_training;
+
 
 
 

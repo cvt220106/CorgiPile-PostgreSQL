@@ -1012,7 +1012,7 @@ void train_without_buffer(PlanState *outerNode, Model* model, int iter, SortTupl
 		}
 
 		fast_transfer_slot_to_sgd_tuple(slot, sort_tuple);
-		compute_tuple_loss(sort_tuple, model);	
+		compute_tuple_gradient(sort_tuple, model);	
 				
 		if (iter == 1)
 			model->tuple_num += 1;

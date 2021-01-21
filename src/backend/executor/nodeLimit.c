@@ -874,7 +874,10 @@ fast_transfer_slot_to_sgd_tuple (
 		sgd_tuple->k_len = k_num;
 	}
 
-	sgd_tuple->v_array = (void *)v_array;
+	if VARATT_IS_EXTENDED((struct varlena *) DatumGetPointer(v_dat))
+		sgd_tuple->v_array = (void *)v_array;
+	else
+		sgd_tuple->v_array = NULL;
 }
 
 
@@ -1019,7 +1022,9 @@ void train_without_buffer(PlanState *outerNode, Model* model, int iter, SortTupl
 
 		fast_transfer_slot_to_sgd_tuple(slot, sort_tuple);
 		compute_tuple_gradient(sort_tuple, model);	
-	
+
+		if (sort_tuple->v_array != NULL)
+			pfree((ArrayType *)(sort_tuple->v_array));
 				
 		if (iter == 1)
 			model->tuple_num += 1;
@@ -1054,7 +1059,8 @@ void test_without_buffer(PlanState *outerNode, Model* model, int iter,
 		fast_transfer_slot_to_sgd_tuple(slot, sort_tuple);
 		compute_tuple_loss(sort_tuple, model);
 
-		pfree((ArrayType *)(sort_tuple->v_array));
+		if (sort_tuple->v_array != NULL)
+			pfree((ArrayType *)(sort_tuple->v_array));
 	}
 }
 

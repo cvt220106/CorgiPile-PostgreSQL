@@ -816,6 +816,12 @@ void sparse_fast_transfer_slot_to_sgd_tuple (
 	memcpy(sort_tuple->features_k, k, v_num * sizeof(int));
 	//sort_tuple->features_v = v;
 	
+	if VARATT_IS_EXTENDED((struct varlena *) DatumGetPointer(v_dat))
+		pfree(v_array);
+
+	if VARATT_IS_EXTENDED((struct varlena *) DatumGetPointer(k_dat))
+		pfree(k_array);
+
 	sort_tuple->isnull = false;
 
 	// for debug

@@ -66,6 +66,7 @@ typedef struct
 	//bool		isnull1;		/* is first key column NULL? */
 	//int			tupindex;		/* see notes above */
 	void* 	 v_array;
+	void* 	 k_array;
 	// for debug
 	// int 		did;
 } SortTuple;

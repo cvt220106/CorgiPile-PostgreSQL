@@ -860,6 +860,8 @@ fast_transfer_slot_to_sgd_tuple (
 	sgd_tuple->class_label = DatumGetInt32(label_dat);
 	sgd_tuple->features_v = v;
 
+	sgd_tuple->k_array = NULL;
+	sgd_tuple->v_array = NULL;
 	// double* v => double* features 
 	//int n_features = sgd_tupledesc->n_features;
 	// if sparse dataset
@@ -872,12 +874,14 @@ fast_transfer_slot_to_sgd_tuple (
             	sizeof(int), (char **) &k);
 		sgd_tuple->features_k = k;
 		sgd_tuple->k_len = k_num;
+
+		if VARATT_IS_EXTENDED((struct varlena *) DatumGetPointer(k_dat))
+			sgd_tuple->k_array = (void *)k_array;
 	}
 
 	if VARATT_IS_EXTENDED((struct varlena *) DatumGetPointer(v_dat))
 		sgd_tuple->v_array = (void *)v_array;
-	else
-		sgd_tuple->v_array = NULL;
+
 }
 
 
@@ -1025,7 +1029,9 @@ void train_without_buffer(PlanState *outerNode, Model* model, int iter, SortTupl
 
 		if (sort_tuple->v_array != NULL)
 			pfree((ArrayType *)(sort_tuple->v_array));
-				
+		if (sort_tuple->k_array != NULL)
+			pfree((ArrayType *)(sort_tuple->k_array));
+
 		if (iter == 1)
 			model->tuple_num += 1;
 	}
@@ -1061,6 +1067,8 @@ void test_without_buffer(PlanState *outerNode, Model* model, int iter,
 
 		if (sort_tuple->v_array != NULL)
 			pfree((ArrayType *)(sort_tuple->v_array));
+		if (sort_tuple->k_array != NULL)
+			pfree((ArrayType *)(sort_tuple->k_array));
 	}
 }
 

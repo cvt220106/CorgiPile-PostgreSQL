@@ -544,6 +544,7 @@ free_tupleshufflesort_state(Tuplesortstate* state)
 {
 	MemoryContext oldcontext = MemoryContextSwitchTo(state->shufflesortcontext);
 
+	/*
 	int i;
 	for (i = 0; i < state->memtupsize; i++) {
 		if (state->memtuples_buffer_1[i].features_v != NULL) {
@@ -565,6 +566,7 @@ free_tupleshufflesort_state(Tuplesortstate* state)
 			pfree(state->memtuples_buffer_2[i].features_k);
 		}
 	}
+	*/
 
 	FREEMEM(state, GetMemoryChunkSpace(state->memtuples_buffer_1));
 	FREEMEM(state, GetMemoryChunkSpace(state->memtuples_buffer_2));
@@ -658,6 +660,7 @@ is_shuffle_buffer_emtpy(Tuplesortstate *state) {
 	return state->memtupcount == 0;
 }
 */
+
 inline int 
 my_parse_array_no_copy(struct varlena* input, int typesize, char** output) {
 	// elog(WARNING, "Inside loss(), for v, ISEXTERNAL %d, ISCOMPR %d, ISHORT %d, varsize_short %d", VARATT_IS_EXTERNAL(v2) ? 1 : 0, VARATT_IS_COMPRESSED(v2)  ? 1 : 0, VARATT_IS_SHORT(v2)  ? 1 : 0, VARSIZE_SHORT(v2));
@@ -677,12 +680,14 @@ my_parse_array_no_copy(struct varlena* input, int typesize, char** output) {
     }
 }
 
+
 inline
 void dense_fast_transfer_slot_to_sgd_tuple (
 	Tuplesortstate *state, 
 	TupleTableSlot* slot, 
 	SortTuple* sort_tuple) {
 
+	// MemoryContext oldcontext = MemoryContextSwitchTo(state->shufflesortcontext);
 	//Assert(sort_tuple->features_v != NULL);
 	// store the values of slot to values/isnulls arrays
 	// int k_col = sgd_tupledesc->k_col;
@@ -721,9 +726,14 @@ void dense_fast_transfer_slot_to_sgd_tuple (
 	// Assert(v_num == n_features);
 	memcpy(sort_tuple->features_v, v, v_num * sizeof(double));
 
+	if VARATT_IS_EXTENDED((struct varlena *) DatumGetPointer(v_dat))
+		pfree(v_array);
+
 	sort_tuple->isnull = false;
 
+	// MemoryContextSwitchTo(oldcontext);
 }
+
 
 inline
 void sparse_fast_transfer_slot_to_sgd_tuple (

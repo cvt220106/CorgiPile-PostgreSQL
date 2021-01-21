@@ -2521,6 +2521,24 @@ static struct config_real ConfigureNamesReal[] =
 		DEFAULT_LEARNING_RATE, 0, DBL_MAX, // 	0.0, 0.0, 1.0,
 		NULL, NULL, NULL
 	},
+		{
+		{"decay", PGC_USERSET, DB_ML,
+			gettext_noop("Sets the decaying factor of learning rate."),
+			NULL
+		},
+		&set_decay,
+		DEFAULT_DECAY, 0, DBL_MAX, // 	0.0, 0.0, 1.0,
+		NULL, NULL, NULL
+	},
+		{
+		{"mu", PGC_USERSET, DB_ML,
+			gettext_noop("Sets the mu parameter for L1/L2 regularization."),
+			NULL
+		},
+		&set_mu,
+		DEFAULT_MU, 0, DBL_MAX, // 	0.0, 0.0, 1.0,
+		NULL, NULL, NULL
+	},
 	{
 		{"buffer_block_num", PGC_USERSET, DB_ML,
 			gettext_noop("Sets the block number in a buffer (default 1.0)."),

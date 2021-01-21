@@ -1,18 +1,20 @@
 #ifndef SGDMODEL_H
 #define SGDMODEL_H
 
-#define DEFAULT_BLOCK_PAGE_NUM 256 // 256 * 8KB = 2MB
+#define DEFAULT_BLOCK_PAGE_NUM 16 // 256 * 8KB = 2MB, 256 for higgs
 #define DEFAULT_IO_BIG_BLOCK_SIZE  800 // 1 page = 8K, default 10 pages
 #define DEFAULT_BUFFER_SIZE  800 // default 100 pages = 800KB
-#define DEFAULT_BUFFER_TUPLE_NUM 50000 
+#define DEFAULT_BUFFER_TUPLE_NUM 40000 
 #define DEFAULT_BUFFER_BLOCK_NUM 1.0
 
 
 #define DEFAULT_BATCH_SIZE  1
-#define DEFAULT_ITER_NUM  30
-#define DEFAULT_LEARNING_RATE	0.1
+#define DEFAULT_ITER_NUM  10
+#define DEFAULT_LEARNING_RATE	0.01 // 0.1 for higgs
 #define DEFAULT_MODEL_NAME "LR"
-#define DEFAULT_TABLE_NAME "forest"
+#define DEFAULT_TABLE_NAME "epsilon"
+#define DEFAULT_DECAY 0.95
+#define DEFAULT_MU 0.00001 // 0.01 for higgs
 
 #define DEFAULT_SET_SHUFFLE true
 #define DEFAULT_USE_MALLOC false
@@ -63,7 +65,7 @@ typedef struct
 	//Datum		datum1;			/* value of first key column */
 	//bool		isnull1;		/* is first key column NULL? */
 	//int			tupindex;		/* see notes above */
-
+	void* 	 v_array;
 	// for debug
 	// int 		did;
 } SortTuple;
@@ -79,6 +81,8 @@ extern double set_buffer_block_num;
 extern int set_batch_size;
 extern int set_iter_num;
 extern double set_learning_rate;
+extern double set_decay;
+extern double set_mu;
 
 extern char* set_model_name;
 extern char* set_table_name;

@@ -38,6 +38,8 @@
 int set_batch_size = DEFAULT_BATCH_SIZE;
 int set_iter_num = DEFAULT_ITER_NUM;
 double set_learning_rate = DEFAULT_LEARNING_RATE;
+double set_decay = DEFAULT_DECAY;
+double set_mu = DEFAULT_MU;
 char* set_model_name = DEFAULT_MODEL_NAME;
 int table_page_number = 0;
 
@@ -216,8 +218,8 @@ Model* init_model(int n_features) {
 	model->learning_rate = set_learning_rate;
 	model->tuple_num = 0;
 	model->n_features = n_features;
-	model->decay = 0.95;
-	model->mu = 0.01;
+	model->decay = set_decay;
+	model->mu = set_mu;
 
     // use memorycontext later
 	model->w = (double *) palloc0(sizeof(double) * n_features);
@@ -366,7 +368,8 @@ compute_dense_tuple_gradient_LR(SortTuple* tp, Model* model)
 
     // regularization
 	double u = model->mu * model->learning_rate;
-    l1_shrink_mask_d(model->w, u, n);
+    // l2_shrink_mask_d(model->w, u, n);
+	l1_shrink_mask_d(model->w, u, n);
 }
 
 inline void
@@ -870,6 +873,8 @@ fast_transfer_slot_to_sgd_tuple (
 		sgd_tuple->features_k = k;
 		sgd_tuple->k_len = k_num;
 	}
+
+	sgd_tuple->v_array = (void *)v_array;
 }
 
 
@@ -946,7 +951,8 @@ void train_with_unshuffled_buffer(PlanState *outerNode, Model* model, int iter) 
 			}
 
 			compute_tuple_gradient(&read_buffer[j], model);	
-				
+			
+
 			if (iter == 1)
 				model->tuple_num += 1;
 		}
@@ -1013,6 +1019,7 @@ void train_without_buffer(PlanState *outerNode, Model* model, int iter, SortTupl
 
 		fast_transfer_slot_to_sgd_tuple(slot, sort_tuple);
 		compute_tuple_gradient(sort_tuple, model);	
+	
 				
 		if (iter == 1)
 			model->tuple_num += 1;
@@ -1046,6 +1053,8 @@ void test_without_buffer(PlanState *outerNode, Model* model, int iter,
 
 		fast_transfer_slot_to_sgd_tuple(slot, sort_tuple);
 		compute_tuple_loss(sort_tuple, model);
+
+		pfree((ArrayType *)(sort_tuple->v_array));
 	}
 }
 
@@ -1832,6 +1841,8 @@ ExecInitLimit(Limit *node, EState *estate, int eflags)
 	elog(INFO, "[Param] batch_size = %d", set_batch_size);
 	elog(INFO, "[Param] iter_num = %d", set_iter_num);
 	elog(INFO, "[Param] learning_rate = %f", set_learning_rate);
+	elog(INFO, "[Param] decay = %f", set_decay);
+	elog(INFO, "[Param] mu = %f", set_mu);
 
 	/*
 	 * create state structure

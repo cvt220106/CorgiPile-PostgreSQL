@@ -1885,6 +1885,10 @@ ExecInitLimit(Limit *node, EState *estate, int eflags)
    	 	n_features = 1000000;
 		dense = false;
 	}
+	else if (is_prefix(set_table_name, "url")) {
+   	 	n_features = 3231961;
+		dense = false;
+	}
 	else if (is_prefix(set_table_name, "criteo")) {
    	 	n_features = 1000000;
 		dense = false;

@@ -775,16 +775,18 @@ void sparse_fast_transfer_slot_to_sgd_tuple (
 	// parse and copy features_v
 	// 
 	if (sort_tuple->features_v == NULL) {
-		int multi = 10;
-		sort_tuple->sparse_array_len = multi * v_num;
+		int multi = 1;
+		int size = 414; // 414 for url dataset, 15 for avazu
+		// int size = multi * v_num
+		sort_tuple->sparse_array_len = size;
 		if (set_use_malloc) {
-			sort_tuple->features_k = (int *)malloc(multi * v_num * sizeof(int));
-			sort_tuple->features_v = (double *)malloc(multi * v_num * sizeof(double));
+			sort_tuple->features_k = (int *)malloc(size * sizeof(int));
+			sort_tuple->features_v = (double *)malloc(size * sizeof(double));
 		}
 		else {
 			MemoryContext oldcontext = MemoryContextSwitchTo(state->shufflesortcontext);
-			sort_tuple->features_k = (int *)palloc(multi * v_num * sizeof(int));
-			sort_tuple->features_v = (double *)palloc(multi * v_num * sizeof(double));
+			sort_tuple->features_k = (int *)palloc(size * sizeof(int));
+			sort_tuple->features_v = (double *)palloc(size * sizeof(double));
 
 			USEMEM(state, GetMemoryChunkSpace(sort_tuple->features_v));
 			USEMEM(state, GetMemoryChunkSpace(sort_tuple->features_k));
@@ -793,7 +795,7 @@ void sparse_fast_transfer_slot_to_sgd_tuple (
 	}
 	else if (v_num > sort_tuple->sparse_array_len) {
 		elog(INFO, "v_num = %d > tuple->sparse_array_len = %d", v_num, sort_tuple->sparse_array_len);
-		int multi = 10;
+		int multi = 2;
 		if (set_use_malloc) {
 			sort_tuple->features_k = (int *)realloc(sort_tuple->features_k, multi * v_num * sizeof(int));
 			sort_tuple->features_v = (double *)realloc(sort_tuple->features_v, multi * v_num * sizeof(double));
@@ -816,11 +818,13 @@ void sparse_fast_transfer_slot_to_sgd_tuple (
 	memcpy(sort_tuple->features_k, k, v_num * sizeof(int));
 	//sort_tuple->features_v = v;
 	
+	
 	if VARATT_IS_EXTENDED((struct varlena *) DatumGetPointer(v_dat))
 		pfree(v_array);
 
 	if VARATT_IS_EXTENDED((struct varlena *) DatumGetPointer(k_dat))
 		pfree(k_array);
+	
 
 	sort_tuple->isnull = false;
 

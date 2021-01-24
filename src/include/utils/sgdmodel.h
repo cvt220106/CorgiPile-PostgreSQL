@@ -1,20 +1,20 @@
 #ifndef SGDMODEL_H
 #define SGDMODEL_H
 
-#define DEFAULT_BLOCK_PAGE_NUM 16 // 256 * 8KB = 2MB, 256 for higgs
+#define DEFAULT_BLOCK_PAGE_NUM 256 // 256 * 8KB = 2MB, 256 for higgs
 #define DEFAULT_IO_BIG_BLOCK_SIZE  800 // 1 page = 8K, default 10 pages
 #define DEFAULT_BUFFER_SIZE  800 // default 100 pages = 800KB
-#define DEFAULT_BUFFER_TUPLE_NUM 40000 
+#define DEFAULT_BUFFER_TUPLE_NUM 200000 
 #define DEFAULT_BUFFER_BLOCK_NUM 1.0
 
 
 #define DEFAULT_BATCH_SIZE  1
 #define DEFAULT_ITER_NUM  10
-#define DEFAULT_LEARNING_RATE	0.01 // 0.1 for higgs
+#define DEFAULT_LEARNING_RATE	0.5 // 0.1 for higgs
 #define DEFAULT_MODEL_NAME "LR"
-#define DEFAULT_TABLE_NAME "epsilon"
+#define DEFAULT_TABLE_NAME "url"
 #define DEFAULT_DECAY 0.95
-#define DEFAULT_MU 0.00001 // 0.01 for higgs
+#define DEFAULT_MU 0.001 // 0.01 for higgs
 
 #define DEFAULT_SET_SHUFFLE true
 #define DEFAULT_USE_MALLOC false

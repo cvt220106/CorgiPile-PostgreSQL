@@ -776,7 +776,7 @@ void sparse_fast_transfer_slot_to_sgd_tuple (
 	// 
 	if (sort_tuple->features_v == NULL) {
 		int multi = 1;
-		int size = 414; // 414 for url dataset, 15 for avazu
+		int size = 85; // 85 for kdda, 414 for url dataset, 15 for avazu
 		// int size = multi * v_num
 		sort_tuple->sparse_array_len = size;
 		if (set_use_malloc) {

@@ -1877,6 +1877,10 @@ ExecInitLimit(Limit *node, EState *estate, int eflags)
    	 	n_features = 11725480;
 		dense = false;
 	}
+	else if (is_prefix(set_table_name, "kdda")) {
+   	 	n_features = 20216830;
+		dense = false;
+	}
 	else if (is_prefix(set_table_name, "kdd2012")) {
    	 	n_features = 54686452;
 		dense = false;

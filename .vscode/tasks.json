@@ -7,7 +7,7 @@
         {
             "label": "Configure",
             "type": "shell",
-            "command": "./configure --prefix=/home/lijie/postgres-origin --enable-depend --enable-cassert --enable-debug --with-python CFLAGS='-Wall -lpthread'",
+            "command": "./configure --prefix=/home/lijie/postgres-origin --enable-depend --enable-cassert --enable-debug --with-python CFLAGS='-o3 -Wall -lpthread'",
             "problemMatcher": [
                 "$eslint-compact"
             ]

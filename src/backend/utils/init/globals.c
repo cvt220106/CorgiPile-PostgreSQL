@@ -101,7 +101,7 @@ int			CTimeZone = 0;
 bool		enableFsync = true;
 bool		allowSystemTableMods = false;
 // int			work_mem = 1024;
-int			work_mem = 1024 * 1000; // 500MB
+int			work_mem = 1024 * 1000 * 10; // 10GB
 int			maintenance_work_mem = 16384;
 
 

@@ -29,10 +29,12 @@
 #include "access/tuptoaster.h"
 
 #include "utils/array.h"
+#include <sys/time.h>
 #include "time.h"
 #include "math.h"
 
 
+char timeBuf[256];
 // guc variables
 // can be set via "SET VAR = XX" in the psql console
 int set_batch_size = DEFAULT_BATCH_SIZE;
@@ -68,6 +70,7 @@ static SGDTupleDesc* init_SGDTupleDesc(int n_features, bool dense);
 //static void free_SGDTuple(SGDTuple* sgd_tuple);
 static void free_SortTuple(SortTuple* sort_tuple);
 static void free_SGDTupleDesc(SGDTupleDesc* sgd_tupledesc);
+static char* get_current_time();
 // static void compute_tuple_gradient_loss_LR(SGDTuple* tp, Model* model, SGDBatchState* batchstate);
 // static void compute_tuple_gradient_loss_SVM(SGDTuple* tp, Model* model, SGDBatchState* batchstate);
 
@@ -87,6 +90,28 @@ static void free_SGDTupleDesc(SGDTupleDesc* sgd_tupledesc);
 // for selecting the gradient and loss computation function
 void	(*compute_tuple_gradient) (SortTuple *stup, Model* model) = NULL;
 void	(*compute_tuple_loss) (SortTuple *stup, Model* model) = NULL;
+
+
+
+
+static char* get_current_time() {
+	time_t t = time(0);
+ 	strftime(timeBuf, 256, "%Y-%m-%d %H:%M:%S", localtime(&t)); //format date and time. 
+	return timeBuf;
+}
+
+double diff_timeofday_seconds(struct timeval *start, struct timeval *end) {
+    double time_use =  (end->tv_sec - start->tv_sec) * 1000 + (end->tv_usec - start->tv_usec) / 1000;//微秒
+    return time_use / 1000; //seconds
+}
+
+
+// static char* get_current_time() {
+// 	time_t t;
+//     time(&t);
+//     ctime_r(&t, timeBuf);
+// 	return timeBuf;
+// }
 
 // from bismarck
 inline double
@@ -910,8 +935,8 @@ void train_with_shuffled_buffer(PlanState *outerNode, Model* model, int iter) {
 			if (read_buffer[read_buf_indexes[j]].isnull) {
 				if (iter == 1) {
 					double avg_page_tuple_num = (double) model->tuple_num / table_page_number;
-					elog(INFO, "[Computed Param] table_tuple_num = %d, buffer_block_num = %.2f", 
-						model->tuple_num, 
+					elog(INFO, "[%s] [Computed Param] table_tuple_num = %d, buffer_block_num = %.2f", 
+						get_current_time(), model->tuple_num, 
 						(double) set_buffer_tuple_num / (set_block_page_num * avg_page_tuple_num));
 				}
 
@@ -947,8 +972,8 @@ void train_with_unshuffled_buffer(PlanState *outerNode, Model* model, int iter) 
 			if (read_buffer[j].isnull) {
 				if (iter == 1) {
 					double avg_page_tuple_num = (double) model->tuple_num / table_page_number;
-					elog(INFO, "[Computed Param] table_tuple_num = %d, buffer_block_num = %.2f", 
-						model->tuple_num, 
+					elog(INFO, "[%s] [Computed Param] table_tuple_num = %d, buffer_block_num = %.2f", 
+						get_current_time(), model->tuple_num, 
 						(double) set_buffer_tuple_num / (set_block_page_num * avg_page_tuple_num));
 				}
 
@@ -971,7 +996,7 @@ void train_with_unshuffled_buffer(PlanState *outerNode, Model* model, int iter) 
 
 inline
 void test_with_unshuffled_buffer(PlanState *outerNode, Model* model, int iter, 
-								 int total_iter_num, clock_t iter_start) {
+								 int total_iter_num) {
 
 	bool end_of_reach = false;
 
@@ -984,13 +1009,18 @@ void test_with_unshuffled_buffer(PlanState *outerNode, Model* model, int iter,
 		int j;
 		for (j = 0; j < buffer_size; ++j) {
 			if (read_buffer[j].isnull) {
+				/*
 				clock_t iter_finish = clock();
+				double comp_grad_time = (double)(train_finish - iter_start) / CLOCKS_PER_SEC; 
 				double iter_exec_time = (double)(iter_finish - iter_start) / CLOCKS_PER_SEC; 
-					
-				elog(INFO, "[Iter %2d] Loss = %.2f, exec_t = %.2fs", 
-					iter, model->total_loss, iter_exec_time);
-			
-				model->total_loss = 0;
+				double comp_loss_time = iter_exec_time - comp_grad_time;
+
+				elog(INFO, "[%s] [Iter %2d] Loss = %.2f, exec_t = %.2fs, grad_t = %.2fs, loss_t = = %.2fs", 
+					get_current_time(), iter, model->total_loss, iter_exec_time,
+					comp_grad_time, comp_loss_time);
+				*/
+
+				// model->total_loss = 0;
 				end_of_reach = true;
 				if (iter < total_iter_num)  // finish
 					ExecReScan(outerNode);		
@@ -1015,8 +1045,8 @@ void train_without_buffer(PlanState *outerNode, Model* model, int iter, SortTupl
 		if (TupIsNull(slot)) {
 			if (iter == 1) {
 				double avg_page_tuple_num = (double) model->tuple_num / table_page_number;
-				elog(INFO, "[Computed Param] table_tuple_num = %d, buffer_block_num = %.2f", 
-					model->tuple_num, 
+				elog(INFO, "[%s] [Computed Param] table_tuple_num = %d, buffer_block_num = %.2f", 
+					get_current_time(), model->tuple_num, 
 					(double) set_buffer_tuple_num / (set_block_page_num * avg_page_tuple_num));
 			}
 
@@ -1039,7 +1069,7 @@ void train_without_buffer(PlanState *outerNode, Model* model, int iter, SortTupl
 
 inline
 void test_without_buffer(PlanState *outerNode, Model* model, int iter, 
-						int total_iter_num, clock_t iter_start, 
+						int total_iter_num, 
 						SortTuple* sort_tuple) {
 
 	bool end_of_reach = false;
@@ -1048,13 +1078,19 @@ void test_without_buffer(PlanState *outerNode, Model* model, int iter,
 		TupleTableSlot* slot = ExecProcNode(outerNode);
 
 		if (TupIsNull(slot)) {
+			/*
 			clock_t iter_finish = clock();
+			double comp_grad_time = (double)(train_finish - iter_start) / CLOCKS_PER_SEC; 
 			double iter_exec_time = (double)(iter_finish - iter_start) / CLOCKS_PER_SEC; 
+			double comp_loss_time = iter_exec_time - comp_grad_time;
 					
-			elog(INFO, "[Iter %2d] Loss = %.2f, exec_t = %.2fs", 
-				iter, model->total_loss, iter_exec_time);
-			
+			elog(INFO, "[%s] [Iter %2d] Loss = %.2f, exec_t = %.2fs, grad_t = %.2fs, loss_t = = %.2fs", 
+				get_current_time(), iter, model->total_loss, iter_exec_time,
+				comp_grad_time, comp_loss_time);
 			model->total_loss = 0;
+			*/
+
+			
 			end_of_reach = true;
 			if (iter < total_iter_num)  // finish
 				ExecReScan(outerNode);		
@@ -1113,13 +1149,21 @@ ExecLimit(LimitState *node)
     // int batch_size = node->model->batch_size;
 
 	// for counting execution time for each iteration
-	clock_t iter_start, iter_finish;
-	double iter_exec_time;
+	// clock_t iter_start, train_finish; //, iter_finish;
+
+	struct timeval iter_start;
+	struct timeval grad_finish;
+	struct timeval loss_finish;
+	
+	double avg_iter_exec_time = 0;
+	double avg_comp_grad_time = 0;
+	double avg_comp_loss_time = 0;
 
 
 	int i;
 	for (i = 1; i <= iter_num; i++) {
-		iter_start = clock();
+		// iter_start = clock();
+		gettimeofday(&iter_start, NULL);
 
 		// train
 		is_training = true;
@@ -1133,6 +1177,8 @@ ExecLimit(LimitState *node)
 		else
 			train_without_buffer(outerNode, model, i, sort_tuple);
 		
+		// train_finish = clock();
+		gettimeofday(&grad_finish, NULL);
 		// update learning_rate
 		model->learning_rate = model->learning_rate * model->decay;
 
@@ -1140,10 +1186,25 @@ ExecLimit(LimitState *node)
 		// test
 		is_training = false;
 		if (set_use_test_buffer)
-			test_with_unshuffled_buffer(outerNode, model, i, iter_num, iter_start);
+			test_with_unshuffled_buffer(outerNode, model, i, iter_num);
 		else
-			test_without_buffer(outerNode, model, i, iter_num, iter_start, sort_tuple);
+			test_without_buffer(outerNode, model, i, iter_num, sort_tuple);
 
+		gettimeofday(&loss_finish, NULL);
+		
+		double exec_t = diff_timeofday_seconds(&iter_start, &loss_finish);
+		double grad_t = diff_timeofday_seconds(&iter_start, &grad_finish);
+		double loss_t = exec_t - grad_t;
+
+		avg_iter_exec_time += exec_t;
+		avg_comp_grad_time += grad_t;
+		avg_comp_loss_time += loss_t;
+
+		elog(INFO, "[%s] [Iter %2d] Loss = %.2f, exec_t = %.2fs, grad_t = %.2fs, loss_t = = %.2fs", 
+				get_current_time(), i, model->total_loss, exec_t,
+				grad_t, loss_t);
+				
+		model->total_loss = 0;
 	}
 
 	// clear states
@@ -1163,7 +1224,9 @@ ExecLimit(LimitState *node)
 	// elog(INFO, "[Model total loss %f]", model->total_loss);
 
 	// slot = output_model_record(node->ps.ps_ResultTupleSlot, model);
-	
+	elog(INFO, "[%s] [Finish] avg_exec_t = %.2fs, avg_grad_t = %.2fs, avg_loss_t = = %.2fs", 
+				get_current_time(), avg_iter_exec_time / iter_num,
+				avg_comp_grad_time / iter_num, avg_comp_loss_time / iter_num);
 	slot = NULL;
 	return slot;
 }
@@ -1842,6 +1905,7 @@ ExecInitLimit(Limit *node, EState *estate, int eflags)
 
 	//
 	const char* work_mem_str = GetConfigOption("work_mem", false, false);
+	elog(INFO, "[%s]", get_current_time());
 	elog(INFO, "============== Begin Training on %s Using %s Model ==============", set_table_name, set_model_name);
 	elog(INFO, "[Param] model_name = %s", set_model_name);
 	elog(INFO, "[Param] use_malloc = %d", set_use_malloc);

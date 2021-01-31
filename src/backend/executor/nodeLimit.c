@@ -857,6 +857,27 @@ transfer_slot_to_sgd_tuple(
 // 	sgd_tuple->class_label = slot->label;
 // }
 
+
+inline void
+fast_transfer_arraytype_to_sgd_tuple(SortTuple* sgd_tuple) {
+
+	if (sgd_tuple->v_array != NULL) {
+		double *v;
+    	int v_num = my_parse_array_no_copy((struct varlena*) sgd_tuple->v_array, 
+            sizeof(float8), (char **) &v);
+		sgd_tuple->features_v = v;
+
+	}
+	
+	if (sgd_tuple->k_array != NULL) {
+		int *k;
+    	int k_num = my_parse_array_no_copy((struct varlena*) sgd_tuple->k_array, 
+            	sizeof(int), (char **) &k);
+		sgd_tuple->features_k = k;
+		sgd_tuple->k_len = k_num;
+	}
+}
+
 inline void
 fast_transfer_slot_to_sgd_tuple (
 	TupleTableSlot* slot, 
@@ -930,9 +951,11 @@ void train_with_shuffled_buffer(PlanState *outerNode, Model* model, int iter) {
 		int *read_buf_indexes = slot->read_buf_indexes;
 
 		int j;
+		SortTuple* sort_tuple;
 
 		for (j = 0; j < buffer_size; ++j) {
-			if (read_buffer[read_buf_indexes[j]].isnull) {
+			sort_tuple = &read_buffer[read_buf_indexes[j]];
+			if (sort_tuple->isnull) {
 				if (iter == 1) {
 					double avg_page_tuple_num = (double) model->tuple_num / table_page_number;
 					elog(INFO, "[%s] [Computed Param] table_tuple_num = %d, buffer_block_num = %.2f", 
@@ -945,8 +968,14 @@ void train_with_shuffled_buffer(PlanState *outerNode, Model* model, int iter) {
 				break;
 			}
 
-			compute_tuple_gradient(&read_buffer[read_buf_indexes[j]], model);	
-				
+			fast_transfer_arraytype_to_sgd_tuple(sort_tuple);
+			compute_tuple_gradient(sort_tuple, model);	
+			
+			if (sort_tuple->v_array != NULL)
+				pfree((ArrayType *)(sort_tuple->v_array));
+			if (sort_tuple->k_array != NULL)
+				pfree((ArrayType *)(sort_tuple->k_array));
+
 			if (iter == 1)
 				model->tuple_num += 1;
 		}
@@ -968,8 +997,11 @@ void train_with_unshuffled_buffer(PlanState *outerNode, Model* model, int iter) 
 		int buffer_size = slot->read_buffer_size;
 
 		int j;
+		SortTuple* sort_tuple;
+
 		for (j = 0; j < buffer_size; ++j) {
-			if (read_buffer[j].isnull) {
+			sort_tuple = &read_buffer[j];
+			if (sort_tuple->isnull) {
 				if (iter == 1) {
 					double avg_page_tuple_num = (double) model->tuple_num / table_page_number;
 					elog(INFO, "[%s] [Computed Param] table_tuple_num = %d, buffer_block_num = %.2f", 
@@ -982,8 +1014,13 @@ void train_with_unshuffled_buffer(PlanState *outerNode, Model* model, int iter) 
 				break;
 			}
 
-			compute_tuple_gradient(&read_buffer[j], model);	
+			fast_transfer_arraytype_to_sgd_tuple(sort_tuple);
+			compute_tuple_gradient(sort_tuple, model);	
 			
+			if (sort_tuple->v_array != NULL)
+				pfree((ArrayType *)(sort_tuple->v_array));
+			if (sort_tuple->k_array != NULL)
+				pfree((ArrayType *)(sort_tuple->k_array));
 
 			if (iter == 1)
 				model->tuple_num += 1;
@@ -1007,8 +1044,10 @@ void test_with_unshuffled_buffer(PlanState *outerNode, Model* model, int iter,
 		int buffer_size = slot->read_buffer_size;
 
 		int j;
+		SortTuple* sort_tuple;
 		for (j = 0; j < buffer_size; ++j) {
-			if (read_buffer[j].isnull) {
+			sort_tuple = &read_buffer[j];
+			if (sort_tuple->isnull) {
 				/*
 				clock_t iter_finish = clock();
 				double comp_grad_time = (double)(train_finish - iter_start) / CLOCKS_PER_SEC; 
@@ -1028,7 +1067,12 @@ void test_with_unshuffled_buffer(PlanState *outerNode, Model* model, int iter,
 				break;
 			}
 
-			compute_tuple_loss(&read_buffer[j], model);
+			fast_transfer_arraytype_to_sgd_tuple(sort_tuple);
+			compute_tuple_loss(sort_tuple, model);
+			if (sort_tuple->v_array != NULL)
+				pfree((ArrayType *)(sort_tuple->v_array));
+			if (sort_tuple->k_array != NULL)
+				pfree((ArrayType *)(sort_tuple->k_array));
 		}
 
 		if (end_of_reach)

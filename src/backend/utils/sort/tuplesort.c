@@ -734,7 +734,138 @@ void dense_fast_transfer_slot_to_sgd_tuple (
 	// MemoryContextSwitchTo(oldcontext);
 }
 
+inline
+void sparse_fast_transfer_slot_to_sgd_tuple (
+	Tuplesortstate *state, 
+	TupleTableSlot* slot, 
+	SortTuple* sort_tuple) {
 
+	//Assert(sort_tuple->features_v != NULL);
+	// store the values of slot to values/isnulls arrays
+	// int k_col = sgd_tupledesc->k_col;
+	// int v_col = sgd_tupledesc->v_col;
+	// int label_col = sgd_tupledesc->label_col;
+
+	// int attnum = HeapTupleHeaderGetNatts(slot->tts_tuple->t_data);
+	slot_deform_tuple(slot, sgd_tupledesc->attr_num);
+	
+	// e.g., features = [0.1, 0, 0.2, 0, 0, 0.3, 0, 0], class_label = -1
+	// Tuple = {10, {0, 2, 5}, {0.1, 0.2, 0.3}, -1}
+	Datum k_dat = slot->tts_values[sgd_tupledesc->k_col];
+	ArrayType  *k_array = DatumGetArrayTypeP(k_dat);
+
+	if VARATT_IS_EXTENDED((struct varlena *) DatumGetPointer(k_dat))
+		sort_tuple->k_array = k_array;
+	else
+		sort_tuple->k_array = NULL;
+
+
+	Datum v_dat = slot->tts_values[sgd_tupledesc->v_col];
+	ArrayType  *v_array = DatumGetArrayTypeP(v_dat); // Datum{0.1, 0.2, 0.3}
+	
+	if VARATT_IS_EXTENDED((struct varlena *) DatumGetPointer(v_dat)) 
+		sort_tuple->v_array = v_array;
+	else 
+		sort_tuple->v_array = NULL;
+	
+
+	Datum label_dat = slot->tts_values[sgd_tupledesc->label_col];
+	sort_tuple->class_label = DatumGetInt32(label_dat);
+	
+	// for normal (unextended) tuple
+	if (sort_tuple->v_array == NULL) {
+		double *v;
+    	int v_num = my_parse_array_no_copy((struct varlena*) v_array, 
+            	sizeof(float8), (char **) &v);
+		
+		if (sort_tuple->features_v == NULL) {
+			int multi = 1;
+			// int size = 85; // 85 for kdda, 414 for url dataset, 15 for avazu
+			int size = 3387; // for splicesite
+			// int size = multi * v_num
+			sort_tuple->sparse_array_len = size;
+			
+			MemoryContext oldcontext = MemoryContextSwitchTo(state->shufflesortcontext);
+			sort_tuple->features_v = (double *)palloc(size * sizeof(double));
+			USEMEM(state, GetMemoryChunkSpace(sort_tuple->features_v));
+			MemoryContextSwitchTo(oldcontext);
+			
+		}
+		else if (v_num > sort_tuple->sparse_array_len) {
+			elog(INFO, "v_num = %d > tuple->sparse_array_len = %d", v_num, sort_tuple->sparse_array_len);
+			int multi = 2;
+			
+			MemoryContext oldcontext = MemoryContextSwitchTo(state->shufflesortcontext);
+			FREEMEM(state, GetMemoryChunkSpace(sort_tuple->features_v));
+			sort_tuple->features_v = (double *)repalloc(sort_tuple->features_v, multi * v_num * sizeof(double));
+			USEMEM(state, GetMemoryChunkSpace(sort_tuple->features_v));
+			MemoryContextSwitchTo(oldcontext);
+			
+			sort_tuple->sparse_array_len = multi * v_num;
+		}
+
+		// Assert(v_num == n_features);
+		memcpy(sort_tuple->features_v, v, v_num * sizeof(double));
+
+	}
+
+	if (sort_tuple->k_array == NULL) {
+		int n_features = sgd_tupledesc->n_features;
+		int *k;
+    	sort_tuple->k_len = my_parse_array_no_copy((struct varlena*) k_array, 
+        	sizeof(int), (char **) &k);
+	
+		if (sort_tuple->features_v == NULL) {
+			int multi = 1;
+			// int size = 85; // 85 for kdda, 414 for url dataset, 15 for avazu
+			int size = 3387; // for splicesite
+			// int size = multi * v_num
+			sort_tuple->sparse_array_len = size;
+			
+			MemoryContext oldcontext = MemoryContextSwitchTo(state->shufflesortcontext);
+			sort_tuple->features_k = (int *)palloc(size * sizeof(int));
+			USEMEM(state, GetMemoryChunkSpace(sort_tuple->features_k));
+			MemoryContextSwitchTo(oldcontext);
+			
+		}
+		else if (sort_tuple->k_len > sort_tuple->sparse_array_len) {
+			elog(INFO, "k_len = %d > tuple->sparse_array_len = %d", sort_tuple->k_len, sort_tuple->sparse_array_len);
+			int multi = 2;
+			
+			MemoryContext oldcontext = MemoryContextSwitchTo(state->shufflesortcontext);
+			FREEMEM(state, GetMemoryChunkSpace(sort_tuple->features_k));
+			sort_tuple->features_k = (int *)repalloc(sort_tuple->features_k, multi * sort_tuple->k_len * sizeof(int));
+			USEMEM(state, GetMemoryChunkSpace(sort_tuple->features_k));
+			MemoryContextSwitchTo(oldcontext);
+			
+			sort_tuple->sparse_array_len = multi * sort_tuple->k_len;
+		}
+
+		memcpy(sort_tuple->features_k, k, sort_tuple->k_len * sizeof(int));
+
+	}
+	
+	/*
+	if VARATT_IS_EXTENDED((struct varlena *) DatumGetPointer(v_dat))
+		pfree(v_array);
+
+	if VARATT_IS_EXTENDED((struct varlena *) DatumGetPointer(k_dat))
+		pfree(k_array);
+	*/
+
+	sort_tuple->isnull = false;
+
+	// for debug
+	// Datum did_dat = slot->tts_values[0];
+	// sort_tuple->did = DatumGetInt32(did_dat);
+
+	// if (sort_tuple->did == 309482) {
+	// 	elog(INFO, "After parsing: %d, {%f, %f, %f, %f}, %d", sort_tuple->did, sort_tuple->features_v[0], 
+	// 	sort_tuple->features_v[1], sort_tuple->features_v[2], sort_tuple->features_v[3], sort_tuple->class_label);
+	// }
+}
+
+/*
 inline
 void sparse_fast_transfer_slot_to_sgd_tuple (
 	Tuplesortstate *state, 
@@ -838,6 +969,10 @@ void sparse_fast_transfer_slot_to_sgd_tuple (
 	// 	sort_tuple->features_v[1], sort_tuple->features_v[2], sort_tuple->features_v[3], sort_tuple->class_label);
 	// }
 }
+
+*/
+
+
 
 /* commit id c6255d6
 inline

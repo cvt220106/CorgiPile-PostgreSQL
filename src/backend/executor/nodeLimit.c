@@ -1941,6 +1941,10 @@ ExecInitLimit(Limit *node, EState *estate, int eflags)
    	 	n_features = 11725480;
 		dense = false;
 	}
+	else if (is_prefix(set_table_name, "sample_splice")) {
+   	 	n_features = 11725480;
+		dense = false;
+	}
 	else if (is_prefix(set_table_name, "kdda")) {
    	 	n_features = 20216830;
 		dense = false;

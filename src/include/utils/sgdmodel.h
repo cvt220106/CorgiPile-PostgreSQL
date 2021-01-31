@@ -1,18 +1,14 @@
 #ifndef SGDMODEL_H
 #define SGDMODEL_H
 
-#define DEFAULT_BLOCK_PAGE_NUM 32 //256 // 256 * 8KB = 2MB, 256 for higgs
-#define DEFAULT_IO_BIG_BLOCK_SIZE  800 // 1 page = 8K, default 10 pages
-#define DEFAULT_BUFFER_SIZE  800 // default 100 pages = 800KB
-#define DEFAULT_BUFFER_TUPLE_NUM 200000
-#define DEFAULT_BUFFER_BLOCK_NUM 1.0
-
+#define DEFAULT_BLOCK_PAGE_NUM 256 // 512 //256 // 256 * 8KB = 2MB, 256 for higgs
+#define DEFAULT_BUFFER_TUPLE_NUM 300000
 
 #define DEFAULT_BATCH_SIZE  1
-#define DEFAULT_ITER_NUM  3
+#define DEFAULT_ITER_NUM  30
 #define DEFAULT_LEARNING_RATE	0.1 // 0.1 for higgs
 #define DEFAULT_MODEL_NAME "LR"
-#define DEFAULT_TABLE_NAME "splicesite"
+#define DEFAULT_TABLE_NAME "splicesite_clustered" // "sample_splice_clustered"
 #define DEFAULT_DECAY 0.95
 #define DEFAULT_MU 0.00001 // 0.01 for higgs
 
@@ -21,7 +17,9 @@
 #define DEFAULT_USE_TRAIN_BUFFER true
 #define DEFAULT_USE_TEST_BUFFER false
 
-
+#define DEFAULT_IO_BIG_BLOCK_SIZE  800 // 1 page = 8K, default 10 pages
+#define DEFAULT_BUFFER_SIZE  800 // default 100 pages = 800KB
+#define DEFAULT_BUFFER_BLOCK_NUM 1.0
 
 typedef struct Model {
     char* model_name;

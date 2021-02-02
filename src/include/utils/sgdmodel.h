@@ -14,8 +14,8 @@
 
 #define DEFAULT_SET_SHUFFLE true
 #define DEFAULT_USE_MALLOC false
-#define DEFAULT_USE_TRAIN_BUFFER true
-#define DEFAULT_USE_TEST_BUFFER false
+#define DEFAULT_USE_TRAIN_BUFFER_NUM 2
+#define DEFAULT_USE_TEST_BUFFER_NUM 0
 
 #define DEFAULT_IO_BIG_BLOCK_SIZE  800 // 1 page = 8K, default 10 pages
 #define DEFAULT_BUFFER_SIZE  800 // default 100 pages = 800KB
@@ -92,8 +92,8 @@ extern bool set_run_test;
 extern bool set_shuffle;
 extern bool set_use_malloc;
 
-extern bool set_use_train_buffer;
-extern bool set_use_test_buffer;
+extern bool set_use_train_buffer_num;
+extern bool set_use_test_buffer_num;
 
 extern SGDTupleDesc* sgd_tupledesc;
 

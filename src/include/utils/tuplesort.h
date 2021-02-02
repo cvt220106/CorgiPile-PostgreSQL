@@ -77,7 +77,7 @@ extern bool is_shuffle_buffer_emtpy(Tuplesortstate *state);
 extern void tupleshufflesort_gettupleslot(Tuplesortstate *state, 
 					   TupleTableSlot *slot);
 
-extern void tupleshufflesort_rescan(Tuplesortstate *state);
+// extern void tupleshufflesort_rescan(Tuplesortstate *state);
 extern void tupleshufflesort_markpos(Tuplesortstate *state);
 extern void tupleshufflesort_restorepos(Tuplesortstate *state);
 
@@ -111,7 +111,7 @@ extern Tuplesortstate *tuplesort_begin_datum(Oid datumType,
 					  int workMem, bool randomAccess);
 
 
-extern void tupleshufflesort_reset_state(Tuplesortstate *state);
+extern void tupleshufflesort_reset_state(Tuplesortstate *state, bool use_double_buffer);
 extern bool tupleshufflesort_is_read_buffer_null(Tuplesortstate *state);
 extern void tupleshufflesort_init_buffer(Tuplesortstate *state);
 extern bool tupleshufflesort_has_tuple_in_buffer(Tuplesortstate *state);

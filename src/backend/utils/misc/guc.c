@@ -697,21 +697,21 @@ static struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 	{
-		{"use_train_buffer", PGC_USERSET, DB_ML,
+		{"use_train_buffer_num", PGC_USERSET, DB_ML,
 			gettext_noop("Use buffer based training."),
 			NULL
 		},
-		&set_use_train_buffer,
-		DEFAULT_USE_TRAIN_BUFFER,
+		&set_use_train_buffer_num,
+		DEFAULT_USE_TRAIN_BUFFER_NUM,
 		NULL, NULL, NULL
 	},
 	{
-		{"use_test_buffer", PGC_USERSET, DB_ML,
+		{"use_test_buffer_num", PGC_USERSET, DB_ML,
 			gettext_noop("Use buffer based testing."),
 			NULL
 		},
-		&set_use_test_buffer,
-		DEFAULT_USE_TEST_BUFFER,
+		&set_use_test_buffer_num,
+		DEFAULT_USE_TEST_BUFFER_NUM,
 		NULL, NULL, NULL
 	},
 	// added end

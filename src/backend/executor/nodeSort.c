@@ -24,7 +24,7 @@
 
 static void free_buffer(Tuplesortstate* tuplesortstate);
 static void init_Tuplesortstate(SortState *node);
-static void reset_sort_state(SortState *node);
+static void reset_sort_state(SortState *node, bool use_double_buffer);
 static void wait_buffer_full(SortState *node);
 static void signal_buffer_full(SortState *node);
 static void wait_swap_finished(SortState *node);
@@ -106,7 +106,7 @@ void free_buffer(Tuplesortstate* tuplesortstate)
 
 }
 
-void reset_sort_state(SortState *node) {
+void reset_sort_state(SortState *node, bool use_double_buffer) {
 
 	// The node state (SortState) cares about the thread-related state,
 	// while tupleshufflesort state cares about the buffer-related state.
@@ -118,7 +118,7 @@ void reset_sort_state(SortState *node) {
 	node->buffer_full_signal = false;
     node->swap_finished_signal = false;
 
-	tupleshufflesort_reset_state(node->tuplesortstate);
+	tupleshufflesort_reset_state(node->tuplesortstate, use_double_buffer);
 
 }
 
@@ -344,7 +344,7 @@ Exec_Unbuffered_Sort(SortState *node) {
 
 inline
 TupleTableSlot *
-Exec_Buffered_Sort(SortState *node)
+Exec_Double_Buffered_Sort(SortState *node)
 {
 	// EState	   *estate = node->ss.ps.state;
 	// ScanDirection dir = estate->es_direction; // going to be set to ShuffleScanDirection
@@ -355,7 +355,7 @@ Exec_Buffered_Sort(SortState *node)
 		// build a new tuplesortstate with new buffer
 		init_Tuplesortstate(node);
 		// reset the tuplesortstate index, etc.
-		reset_sort_state(node);
+		reset_sort_state(node, true);
 		// node->rescan_count = 0;
 		state = node->tuplesortstate;
 		// elog(INFO, "state == null, reset_sort_state");
@@ -393,6 +393,69 @@ Exec_Buffered_Sort(SortState *node)
 }
 
 
+inline
+void write_tuples_to_buffer(SortState *node) {
+
+	PlanState  *outerNode = outerPlanState(node);
+	Tuplesortstate* state = node->tuplesortstate;
+
+	// clock_t start = clock(); 
+
+    while(true) {
+		
+        TupleTableSlot* tuple_slot = ExecProcNode(outerNode);
+       
+        // still put the tuple into the buffer when tuple == null
+        bool write_buffer_full = tupleshufflesort_puttupleslot(state, tuple_slot);
+
+        if (write_buffer_full || TupIsNull(tuple_slot)) {
+			tupleshufflesort_performshuffle(state); // the last tuple can be null
+            // clock_t finish = clock();    
+   			// double duration = (double)(finish - start) / CLOCKS_PER_SEC;    
+   			// elog(INFO, "[write_full] %f seconds", duration);  
+			// start = finish;
+			//elog(INFO, "[write thread] Finish signal_buffer_full(node);");
+			break;
+        }
+    }
+}
+
+inline
+TupleTableSlot *
+Exec_Single_Buffered_Sort(SortState *node)
+{
+	// EState	   *estate = node->ss.ps.state;
+	// ScanDirection dir = estate->es_direction; // going to be set to ShuffleScanDirection
+	Tuplesortstate *state = node->tuplesortstate;
+	TupleTableSlot *slot;
+
+	if (state == NULL) {
+		// build a new tuplesortstate with new buffer
+		init_Tuplesortstate(node);
+		// reset the tuplesortstate index, etc.
+		reset_sort_state(node, false);
+		// node->rescan_count = 0;
+		state = node->tuplesortstate;
+		// elog(INFO, "state == null, reset_sort_state");
+
+	}
+
+	// only use the write_buffer
+	write_tuples_to_buffer(node);
+
+	slot = node->ss.ps.ps_ResultTupleSlot;
+
+	slot->read_buffer = tupleshufflesort_getreadbuffer(state);
+	slot->read_buf_indexes = tupleshufflesort_getbufferindexes(state);
+	slot->tts_isempty = false;
+	slot->tts_shouldFree = false;
+	slot->read_buffer_size = tupleshufflesort_getbuffersize(state);
+
+	return slot;
+}
+
+
+
 /* ----------------------------------------------------------------
  *		ExecEndSort(node)
  * ----------------------------------------------------------------
@@ -412,7 +475,7 @@ ExecEndSort(SortState *node)
 	//elog(LOG, "end ExecClearTuple ps_ResultTupleSlot.");
 
 	//elog(INFO, "begin free_buffer.");
-	if (set_use_train_buffer || set_use_test_buffer)
+	if (set_use_train_buffer_num > 0 || set_use_test_buffer_num > 0)
 		free_buffer(node->tuplesortstate);
 	//elog(INFO, "end free_buffer.");
 	/*
@@ -431,7 +494,7 @@ ExecEndSort(SortState *node)
 	SO1_printf("ExecEndSort: %s\n",
 			   "sort node shutdown");
 
-	if (set_use_train_buffer || set_use_test_buffer) {
+	if (set_use_train_buffer_num == 2 || set_use_test_buffer_num == 2) {
 		Assert(pthread_mutex_destroy(&buffer_mutex) == 0);
     	Assert(pthread_mutex_destroy(&swap_mutex) == 0);
     	Assert(pthread_cond_destroy(&buffer_full_cond) == 0);
@@ -443,14 +506,18 @@ TupleTableSlot *
 ExecSort(SortState *node)
 {
 	if (is_training) {
-		if (set_use_train_buffer)
-			return Exec_Buffered_Sort(node);
+		if (set_use_train_buffer_num == 2)
+			return Exec_Double_Buffered_Sort(node);
+		else if (set_use_train_buffer_num == 1)
+			return Exec_Single_Buffered_Sort(node);
 		else
 			return Exec_Unbuffered_Sort(node);
 	}
 	else {
-		if (set_use_test_buffer)
-			return Exec_Buffered_Sort(node);
+		if (set_use_test_buffer_num == 2)
+			return Exec_Double_Buffered_Sort(node);
+		else if (set_use_test_buffer_num == 1)
+			return Exec_Single_Buffered_Sort(node);
 		else
 			return Exec_Unbuffered_Sort(node);
 	}
@@ -510,11 +577,19 @@ ExecReScanSort(SortState *node)
 	/* must drop pointer to sort result tuple */
 	ExecClearTuple(node->ss.ps.ps_ResultTupleSlot);
 
-	if (is_training && set_use_train_buffer)
-		reset_sort_state(node);
+	if (is_training) {
+		if (set_use_train_buffer_num == 2)
+			reset_sort_state(node, true);
+		else if (set_use_train_buffer_num == 1)
+			reset_sort_state(node, false);
+	}
 	
-	if (is_training == false && set_use_test_buffer)
-		reset_sort_state(node);
+	if (is_training == false) {
+		if (set_use_test_buffer_num == 2)
+			reset_sort_state(node, true);
+		else if (set_use_test_buffer_num == 1)
+			reset_sort_state(node, false);
+	}
 
 	// Assert(pthread_mutex_destroy(&buffer_mutex) == 0);
     // Assert(pthread_mutex_destroy(&swap_mutex) == 0);

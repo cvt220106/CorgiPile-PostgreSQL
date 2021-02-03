@@ -54,8 +54,8 @@ bool set_shuffle = DEFAULT_SET_SHUFFLE;
 bool is_training = true;
 
 bool set_use_malloc = DEFAULT_USE_MALLOC;
-bool set_use_train_buffer = DEFAULT_USE_TRAIN_BUFFER;
-bool set_use_test_buffer = DEFAULT_USE_TEST_BUFFER;
+bool set_use_train_buffer_num = DEFAULT_USE_TRAIN_BUFFER_NUM;
+bool set_use_test_buffer_num = DEFAULT_USE_TEST_BUFFER_NUM;
 
 SGDTupleDesc* sgd_tupledesc; // also used in nodeSort.c for parsing tuple_slot to double* features
 
@@ -1168,7 +1168,7 @@ ExecLimit(LimitState *node)
 		// train
 		is_training = true;
 
-		if (set_use_train_buffer) {
+		if (set_use_train_buffer_num > 0) {
 			if (set_shuffle)
 				train_with_shuffled_buffer(outerNode, model, i);
 			else
@@ -1185,7 +1185,7 @@ ExecLimit(LimitState *node)
 
 		// test
 		is_training = false;
-		if (set_use_test_buffer)
+		if (set_use_test_buffer_num > 0)
 			test_with_unshuffled_buffer(outerNode, model, i, iter_num);
 		else
 			test_without_buffer(outerNode, model, i, iter_num, sort_tuple);
@@ -1910,8 +1910,8 @@ ExecInitLimit(Limit *node, EState *estate, int eflags)
 	elog(INFO, "[Param] model_name = %s", set_model_name);
 	elog(INFO, "[Param] use_malloc = %d", set_use_malloc);
 	elog(INFO, "[Param] shuffle = %d", set_shuffle);
-	elog(INFO, "[Param] use_train_buffer = %d", set_use_train_buffer);
-	elog(INFO, "[Param] use_test_buffer = %d", set_use_test_buffer);
+	elog(INFO, "[Param] use_train_buffer_num = %d", set_use_train_buffer_num);
+	elog(INFO, "[Param] use_test_buffer_num = %d", set_use_test_buffer_num);
 	elog(INFO, "[Param] work_mem = %s KB", work_mem_str);
 	elog(INFO, "[Param] block_page_num = %d pages", set_block_page_num);
 	// elog(INFO, "[Param] io_block_size = %d pages", set_io_big_block_size);

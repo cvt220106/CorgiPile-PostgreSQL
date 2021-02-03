@@ -238,6 +238,7 @@ Model* init_model(int n_features) {
 
 	model->model_name = set_model_name;
 	model->total_loss = 0;
+	model->accuracy = 0;
 	model->batch_size = set_batch_size;
 	model->iter_num = set_iter_num;
 	model->learning_rate = set_learning_rate;
@@ -426,6 +427,16 @@ compute_dense_tuple_loss_LR(SortTuple* tp, Model* model)
 	double wx = dot(model->w, tp->features_v, model->n_features);
     double tuple_loss = log(1 + exp(-y * wx));
 	model->total_loss += tuple_loss;
+
+		
+	// By default, if f(wx) > 0.5, the outcome is positive, or negative otherwise
+	double f_wx = sigma(wx);
+	if (f_wx >= 0.5 && y == 1) {
+		model->accuracy += 1;
+	}
+	else if (f_wx < 0.5 && y == -1) {
+		model->accuracy += 1;
+	}	
 }
 
 inline void
@@ -435,6 +446,15 @@ compute_sparse_tuple_loss_LR(SortTuple* tp, Model* model)
 	double wx = dot_dss(model->w, tp->features_k, tp->features_v, tp->k_len);
     double tuple_loss = log(1 + exp(-y * wx));
 	model->total_loss += tuple_loss;
+
+	// By default, if f(wx) > 0.5, the outcome is positive, or negative otherwise
+	double f_wx = sigma(wx);
+	if (f_wx >= 0.5 && y == 1) {
+		model->accuracy += 1;
+	}
+	else if (f_wx < 0.5 && y == -1) {
+		model->accuracy += 1;
+	}	
 }
 
 
@@ -485,6 +505,15 @@ compute_dense_tuple_loss_SVM(SortTuple* tp, Model* model)
 	double wx = dot(model->w, tp->features_v, model->n_features);
     double loss = 1 - y * wx;
     model->total_loss += (loss > 0) ? loss : 0;
+
+
+	//  if wx >= 0 then the outcome is positive, and negative otherwise.
+	if (wx >= 0 && y == 1) {
+		model->accuracy += 1;
+	} 
+	else if (wx < 0 && y == -1) {
+		model->accuracy += 1;
+	}
 }
 
 inline void
@@ -494,6 +523,14 @@ compute_sparse_tuple_loss_SVM(SortTuple* tp, Model* model)
 	double wx = dot_dss(model->w, tp->features_k, tp->features_v, tp->k_len);
     double loss = 1 - y * wx;
     model->total_loss += (loss > 0) ? loss : 0;
+
+	//  if wx >= 0 then the outcome is positive, and negative otherwise.
+	if (wx >= 0 && y == 1) {
+		model->accuracy += 1;
+	} 
+	else if (wx < 0 && y == -1) {
+		model->accuracy += 1;
+	}
 }
 
 
@@ -1199,12 +1236,14 @@ ExecLimit(LimitState *node)
 		avg_iter_exec_time += exec_t;
 		avg_comp_grad_time += grad_t;
 		avg_comp_loss_time += loss_t;
+		model->accuracy = model->accuracy / model->tuple_num;
 
-		elog(INFO, "[%s] [Iter %2d] Loss = %.2f, exec_t = %.2fs, grad_t = %.2fs, loss_t = = %.2fs", 
-				get_current_time(), i, model->total_loss, exec_t,
-				grad_t, loss_t);
+		elog(INFO, "[%s] [Iter %2d] Loss = %.2f, Acc = %.2f, exec_t = %.2fs, grad_t = %.2fs, loss_t = = %.2fs", 
+				get_current_time(), i, model->total_loss, model->accuracy,
+				exec_t, grad_t, loss_t);
 				
 		model->total_loss = 0;
+		model->accuracy = 0;
 	}
 
 	// clear states
@@ -1818,6 +1857,7 @@ ExecLimit(LimitState *node)
 	return slot;
 }
 */
+
 
 /*
 void compute_tuple_accuracy(Model* model, SGDTuple* tp, TestState* test_state) {

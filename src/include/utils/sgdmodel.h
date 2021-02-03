@@ -32,6 +32,7 @@ typedef struct Model {
     double n_features;
     int iter_num;
     int tuple_num;
+	double accuracy;
 } Model;
 
 typedef struct SGDTupleDesc

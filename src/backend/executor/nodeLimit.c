@@ -54,8 +54,8 @@ bool set_shuffle = DEFAULT_SET_SHUFFLE;
 bool is_training = true;
 
 bool set_use_malloc = DEFAULT_USE_MALLOC;
-bool set_use_train_buffer_num = DEFAULT_USE_TRAIN_BUFFER_NUM;
-bool set_use_test_buffer_num = DEFAULT_USE_TEST_BUFFER_NUM;
+int set_use_train_buffer_num = DEFAULT_USE_TRAIN_BUFFER_NUM;
+int set_use_test_buffer_num = DEFAULT_USE_TEST_BUFFER_NUM;
 
 SGDTupleDesc* sgd_tupledesc; // also used in nodeSort.c for parsing tuple_slot to double* features
 

@@ -696,24 +696,6 @@ static struct config_bool ConfigureNamesBool[] =
 		DEFAULT_USE_MALLOC,
 		NULL, NULL, NULL
 	},
-	{
-		{"use_train_buffer_num", PGC_USERSET, DB_ML,
-			gettext_noop("Use buffer based training."),
-			NULL
-		},
-		&set_use_train_buffer_num,
-		DEFAULT_USE_TRAIN_BUFFER_NUM,
-		NULL, NULL, NULL
-	},
-	{
-		{"use_test_buffer_num", PGC_USERSET, DB_ML,
-			gettext_noop("Use buffer based testing."),
-			NULL
-		},
-		&set_use_test_buffer_num,
-		DEFAULT_USE_TEST_BUFFER_NUM,
-		NULL, NULL, NULL
-	},
 	// added end
 	{
 		{"enable_seqscan", PGC_USERSET, QUERY_TUNING_METHOD,
@@ -1762,6 +1744,25 @@ static struct config_int ConfigureNamesInt[] =
 		},
 		&set_block_page_num,
 		DEFAULT_BLOCK_PAGE_NUM, 1, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"use_train_buffer_num", PGC_USERSET, DB_ML,
+			gettext_noop("Use buffer based training."),
+			NULL
+		},
+		&set_use_train_buffer_num,
+		DEFAULT_USE_TRAIN_BUFFER_NUM, 0, 2,
+		NULL, NULL, NULL
+	},
+	{
+		{"use_test_buffer_num", PGC_USERSET, DB_ML,
+			gettext_noop("Use buffer based testing."),
+			NULL
+		},
+		&set_use_test_buffer_num,
+		DEFAULT_USE_TEST_BUFFER_NUM, 0, 2,
 		NULL, NULL, NULL
 	},
 

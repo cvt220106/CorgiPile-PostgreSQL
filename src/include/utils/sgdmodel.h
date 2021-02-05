@@ -2,13 +2,13 @@
 #define SGDMODEL_H
 
 #define DEFAULT_BLOCK_PAGE_NUM 1024 // 512 //256 // 256 * 8KB = 2MB, 256 for higgs
-#define DEFAULT_BUFFER_TUPLE_NUM 300000
+#define DEFAULT_BUFFER_TUPLE_NUM 9000000
 
 #define DEFAULT_BATCH_SIZE  1
 #define DEFAULT_ITER_NUM  3
 #define DEFAULT_LEARNING_RATE	0.1 // 0.1 for higgs
 #define DEFAULT_MODEL_NAME "LR"
-#define DEFAULT_TABLE_NAME "splicesite" //"splicesite_clustered" // "sample_splice_clustered"
+#define DEFAULT_TABLE_NAME "criteo_clustered" //"splicesite_clustered" // "sample_splice_clustered"
 #define DEFAULT_DECAY 0.95
 #define DEFAULT_MU 0.00001 // 0.01 for higgs
 
@@ -45,6 +45,7 @@ typedef struct SGDTupleDesc
 
 	int attr_num; // 3 for forest
 	bool dense;
+	int max_sparse_count;
 } SGDTupleDesc;
 
 

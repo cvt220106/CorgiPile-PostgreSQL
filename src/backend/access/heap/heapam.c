@@ -1003,16 +1003,20 @@ heapgettup_pagemode(HeapScanDesc scan,
 			for (i = 0; i < scan->io_big_block_num; i++) 
 				scan->rs_shuffled_block_ids[i] = i * scan->page_num_per_block;
 			
-			srand(time(0) + rand());
+			// only shuffing the blocks/pages for SGD training
+			if (is_training) {
+				srand(time(0) + rand());
 
-			// rs_shuffled_block_ids = [5120, 3840, 0, 6400, 8960, 1280, 2560, 5120, 7680]
-			for (i = scan->io_big_block_num - 1; i > 0; i--) {
-				BlockNumber r = rand() % (i + 1);
-				// swap(a + i, a + r);
-				BlockNumber t = scan->rs_shuffled_block_ids[i];
-				scan->rs_shuffled_block_ids[i] = scan->rs_shuffled_block_ids[r];
-				scan->rs_shuffled_block_ids[r] = t;
+				// rs_shuffled_block_ids = [5120, 3840, 0, 6400, 8960, 1280, 2560, 5120, 7680]
+				for (i = scan->io_big_block_num - 1; i > 0; i--) {
+					BlockNumber r = rand() % (i + 1);
+					// swap(a + i, a + r);
+					BlockNumber t = scan->rs_shuffled_block_ids[i];
+					scan->rs_shuffled_block_ids[i] = scan->rs_shuffled_block_ids[r];
+					scan->rs_shuffled_block_ids[r] = t;
+				}
 			}
+			
 
 			BlockNumber index = 0; // 0
 			scan->rs_startblock = scan->rs_shuffled_block_ids[index];

@@ -64,7 +64,7 @@ static void ExecFreeModel(Model* model);
 // static SGDBatchState* init_SGDBatchState(int n_features);
 // static SGDTuple* init_SGDTuple(int n_features);
 static SortTuple* init_SortTuple(int n_features);
-static SGDTupleDesc* init_SGDTupleDesc(int n_features, bool dense);
+static SGDTupleDesc* init_SGDTupleDesc(int n_features, bool dense, int max_sparse_count);
 // static void clear_SGDBatchState(SGDBatchState* batchstate, int n_features);
 // static void free_SGDBatchState(SGDBatchState* batchstate);
 //static void free_SGDTuple(SGDTuple* sgd_tuple);
@@ -301,7 +301,7 @@ static void free_SortTuple(SortTuple* sort_tuple) {
     pfree(sort_tuple);
 }
 
-static SGDTupleDesc* init_SGDTupleDesc(int n_features, bool dense) {
+static SGDTupleDesc* init_SGDTupleDesc(int n_features, bool dense, int max_sparse_count) {
     SGDTupleDesc* sgd_tupledesc = (SGDTupleDesc *) palloc(sizeof(SGDTupleDesc));
 
     // sgd_tupledesc->values = (Datum *) palloc0(sizeof(Datum) * col_num);
@@ -321,6 +321,7 @@ static SGDTupleDesc* init_SGDTupleDesc(int n_features, bool dense) {
 		sgd_tupledesc->v_col = 2;
 		sgd_tupledesc->label_col = 3;
 		sgd_tupledesc->attr_num = 4;
+		sgd_tupledesc->max_sparse_count = max_sparse_count;
 		
 	}
 	else {
@@ -329,6 +330,7 @@ static SGDTupleDesc* init_SGDTupleDesc(int n_features, bool dense) {
 		sgd_tupledesc->v_col = 1;
 		sgd_tupledesc->label_col = 2;
 		sgd_tupledesc->attr_num = 3;
+		
 	}
 	
 	sgd_tupledesc->n_features = n_features;
@@ -1932,6 +1934,7 @@ ExecInitLimit(Limit *node, EState *estate, int eflags)
 
 	bool dense = true;
 	int n_features;
+	int max_sparse_count = 100;
 
 	if (is_prefix(set_table_name, "dblife")) {
 		n_features = 41270; 
@@ -1940,14 +1943,17 @@ ExecInitLimit(Limit *node, EState *estate, int eflags)
 	else if (is_prefix(set_table_name, "splicesite")) {
    	 	n_features = 11725480;
 		dense = false;
+		max_sparse_count = 3387;
 	}
 	else if (is_prefix(set_table_name, "sample_splice")) {
    	 	n_features = 11725480;
 		dense = false;
+		max_sparse_count = 3387;
 	}
 	else if (is_prefix(set_table_name, "kdda")) {
    	 	n_features = 20216830;
 		dense = false;
+		max_sparse_count = 85;
 	}
 	else if (is_prefix(set_table_name, "kdd2012")) {
    	 	n_features = 54686452;
@@ -1956,14 +1962,17 @@ ExecInitLimit(Limit *node, EState *estate, int eflags)
 	else if (is_prefix(set_table_name, "avazu")) {
    	 	n_features = 1000000;
 		dense = false;
+		max_sparse_count = 15;
 	}
 	else if (is_prefix(set_table_name, "url")) {
    	 	n_features = 3231961;
 		dense = false;
+		max_sparse_count = 414;
 	}
 	else if (is_prefix(set_table_name, "criteo")) {
    	 	n_features = 1000000;
 		dense = false;
+		max_sparse_count = 39;
 	}
 
 	else if (is_prefix(set_table_name, "forest"))
@@ -1975,7 +1984,7 @@ ExecInitLimit(Limit *node, EState *estate, int eflags)
 	
 
     sgdstate->model = init_model(n_features);
-	sgd_tupledesc = init_SGDTupleDesc(n_features, dense);
+	sgd_tupledesc = init_SGDTupleDesc(n_features, dense, max_sparse_count);
 
 	if (strcmp(set_model_name, "LR") == 0 || strcmp(set_model_name, "lr") == 0) {
 		if (dense) {

@@ -1974,6 +1974,11 @@ ExecInitLimit(Limit *node, EState *estate, int eflags)
 		dense = false;
 		max_sparse_count = 39;
 	}
+	else if (is_prefix(set_table_name, "sample_criteo")) {
+   	 	n_features = 1000000;
+		dense = false;
+		max_sparse_count = 39;
+	}
 
 	else if (is_prefix(set_table_name, "forest"))
    	 	n_features = 54;

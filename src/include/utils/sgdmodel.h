@@ -1,20 +1,20 @@
 #ifndef SGDMODEL_H
 #define SGDMODEL_H
 
-#define DEFAULT_BLOCK_PAGE_NUM 1024 // 512 //256 // 256 * 8KB = 2MB, 256 for higgs
-#define DEFAULT_BUFFER_TUPLE_NUM 9000000
+#define DEFAULT_BLOCK_PAGE_NUM 102 // 1024 // 512 //256 // 256 * 8KB = 2MB, 256 for higgs
+#define DEFAULT_BUFFER_TUPLE_NUM 900000 //0
 
 #define DEFAULT_BATCH_SIZE  1
-#define DEFAULT_ITER_NUM  3
+#define DEFAULT_ITER_NUM  30
 #define DEFAULT_LEARNING_RATE	0.1 // 0.1 for higgs
 #define DEFAULT_MODEL_NAME "LR"
-#define DEFAULT_TABLE_NAME "criteo_clustered" //"splicesite_clustered" // "sample_splice_clustered"
+#define DEFAULT_TABLE_NAME "sample_criteo_clustered" //"splicesite_clustered" // "sample_splice_clustered"
 #define DEFAULT_DECAY 0.95
 #define DEFAULT_MU 0.00001 // 0.01 for higgs
 
 #define DEFAULT_SET_SHUFFLE true
 #define DEFAULT_USE_MALLOC false
-#define DEFAULT_USE_TRAIN_BUFFER_NUM 1
+#define DEFAULT_USE_TRAIN_BUFFER_NUM 2
 #define DEFAULT_USE_TEST_BUFFER_NUM 0
 
 #define DEFAULT_IO_BIG_BLOCK_SIZE  800 // 1 page = 8K, default 10 pages

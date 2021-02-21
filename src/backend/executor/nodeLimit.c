@@ -246,6 +246,8 @@ Model* init_model(int n_features) {
 	model->decay = set_decay;
 	model->mu = set_mu;
 
+	model->accuracy = 0;
+
     // use memorycontext later
 	model->w = (double *) palloc0(sizeof(double) * n_features);
 	//memset(model->w, 0, sizeof(double) * n_features);
@@ -419,6 +421,7 @@ compute_sparse_tuple_gradient_LR(SortTuple* tp, Model* model)
 }
 
 
+
 inline void
 compute_dense_tuple_loss_LR(SortTuple* tp, Model* model)
 {
@@ -428,6 +431,16 @@ compute_dense_tuple_loss_LR(SortTuple* tp, Model* model)
 	double wx = dot(model->w, tp->features_v, model->n_features);
     double tuple_loss = log(1 + exp(-y * wx));
 	model->total_loss += tuple_loss;
+
+
+	// By default, if f(wx) > 0.5, the outcome is positive, or negative otherwise
+	double f_wx = sigma(wx);
+	if (f_wx >= 0.5 && y == 1) {
+		model->accuracy += 1;
+	}
+	else if (f_wx < 0.5 && y == -1) {
+		model->accuracy += 1;
+	}
 }
 
 inline void
@@ -437,6 +450,15 @@ compute_sparse_tuple_loss_LR(SortTuple* tp, Model* model)
 	double wx = dot_dss(model->w, tp->features_k, tp->features_v, tp->k_len);
     double tuple_loss = log(1 + exp(-y * wx));
 	model->total_loss += tuple_loss;
+
+	// By default, if f(wx) > 0.5, the outcome is positive, or negative otherwise
+	double f_wx = sigma(wx);
+	if (f_wx >= 0.5 && y == 1) {
+		model->accuracy += 1;
+	}
+	else if (f_wx < 0.5 && y == -1) {
+		model->accuracy += 1;
+	}
 }
 
 
@@ -487,6 +509,14 @@ compute_dense_tuple_loss_SVM(SortTuple* tp, Model* model)
 	double wx = dot(model->w, tp->features_v, model->n_features);
     double loss = 1 - y * wx;
     model->total_loss += (loss > 0) ? loss : 0;
+
+	//  if wx >= 0 then the outcome is positive, and negative otherwise.
+	if (wx >= 0 && y == 1) {
+		model->accuracy += 1;
+	} 
+	else if (wx < 0 && y == -1) {
+		model->accuracy += 1;
+	}
 }
 
 inline void
@@ -496,6 +526,14 @@ compute_sparse_tuple_loss_SVM(SortTuple* tp, Model* model)
 	double wx = dot_dss(model->w, tp->features_k, tp->features_v, tp->k_len);
     double loss = 1 - y * wx;
     model->total_loss += (loss > 0) ? loss : 0;
+
+	//  if wx >= 0 then the outcome is positive, and negative otherwise.
+	if (wx >= 0 && y == 1) {
+		model->accuracy += 1;
+	} 
+	else if (wx < 0 && y == -1) {
+		model->accuracy += 1;
+	}
 }
 
 
@@ -1202,11 +1240,14 @@ ExecLimit(LimitState *node)
 		avg_comp_grad_time += grad_t;
 		avg_comp_loss_time += loss_t;
 
-		elog(INFO, "[%s] [Iter %2d] Loss = %.2f, exec_t = %.2fs, grad_t = %.2fs, loss_t = = %.2fs", 
-				get_current_time(), i, model->total_loss, exec_t,
+		model->accuracy = model->accuracy / model->tuple_num * 100;
+
+		elog(INFO, "[%s] [Iter %2d] Loss = %.2f, acc = %.2f, exec_t = %.2fs, grad_t = %.2fs, loss_t = = %.2fs", 
+				get_current_time(), i, model->total_loss, model->accuracy, exec_t,
 				grad_t, loss_t);
 				
 		model->total_loss = 0;
+		model->accuracy = 0;
 	}
 
 	// clear states
@@ -1986,6 +2027,8 @@ ExecInitLimit(Limit *node, EState *estate, int eflags)
    	 	n_features = 28;
 	else if (is_prefix(set_table_name, "epsilon"))
    	 	n_features = 2000;
+	else if (is_prefix(set_table_name, "yfcc"))
+   	 	n_features = 4096;
 	
 
     sgdstate->model = init_model(n_features);

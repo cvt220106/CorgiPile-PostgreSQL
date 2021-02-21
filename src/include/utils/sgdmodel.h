@@ -1,14 +1,14 @@
 #ifndef SGDMODEL_H
 #define SGDMODEL_H
 
-#define DEFAULT_BLOCK_PAGE_NUM 102 // 1024 // 512 //256 // 256 * 8KB = 2MB, 256 for higgs
-#define DEFAULT_BUFFER_TUPLE_NUM 900000 //0
+#define DEFAULT_BLOCK_PAGE_NUM 16 // 1280 // 1024 // 512 //256 // 256 * 8KB = 2MB, 256 for higgs
+#define DEFAULT_BUFFER_TUPLE_NUM 50000 // 9000000
 
 #define DEFAULT_BATCH_SIZE  1
 #define DEFAULT_ITER_NUM  30
 #define DEFAULT_LEARNING_RATE	0.1 // 0.1 for higgs
 #define DEFAULT_MODEL_NAME "LR"
-#define DEFAULT_TABLE_NAME "sample_criteo_clustered" //"splicesite_clustered" // "sample_splice_clustered"
+#define DEFAULT_TABLE_NAME "yfcc" // "criteo" // "criteo_clustered" //"sample_criteo_clustered" //"splicesite_clustered" // "sample_splice_clustered"
 #define DEFAULT_DECAY 0.95
 #define DEFAULT_MU 0.00001 // 0.01 for higgs
 
@@ -32,6 +32,7 @@ typedef struct Model {
     double n_features;
     int iter_num;
     int tuple_num;
+	double accuracy;
 } Model;
 
 typedef struct SGDTupleDesc

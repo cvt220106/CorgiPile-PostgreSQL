@@ -706,9 +706,12 @@ void dense_fast_transfer_slot_to_sgd_tuple (
 	Datum v_dat = slot->tts_values[sgd_tupledesc->v_col];
 	ArrayType  *v_array = DatumGetArrayTypeP(v_dat); // Datum{0.1, 0.2, 0.3}
 	
-	double *v;
-    int v_num = my_parse_array_no_copy((struct varlena*) v_array, 
-            sizeof(float8), (char **) &v);
+	int	v_num = ArrayGetNItems(ARR_NDIM(v_array), ARR_DIMS(v_array));
+	double *v = (double *) ARR_DATA_PTR(v_array);
+
+	// double *v;
+    // int v_num = my_parse_array_no_copy((struct varlena*) v_array, 
+    //         sizeof(float8), (char **) &v);
 
 	Datum label_dat = slot->tts_values[sgd_tupledesc->label_col];
 	sort_tuple->class_label = DatumGetInt32(label_dat);
@@ -759,9 +762,12 @@ void sparse_fast_transfer_slot_to_sgd_tuple (
 	Datum v_dat = slot->tts_values[sgd_tupledesc->v_col];
 	ArrayType  *v_array = DatumGetArrayTypeP(v_dat); // Datum{0.1, 0.2, 0.3}
 	
-	double *v;
-    int v_num = my_parse_array_no_copy((struct varlena*) v_array, 
-            sizeof(float8), (char **) &v);
+	int	v_num = ArrayGetNItems(ARR_NDIM(v_array), ARR_DIMS(v_array));
+	double *v = (double *) ARR_DATA_PTR(v_array);
+
+	// double *v;
+    // int v_num = my_parse_array_no_copy((struct varlena*) v_array, 
+    //         sizeof(float8), (char **) &v);
 
 	Datum label_dat = slot->tts_values[sgd_tupledesc->label_col];
 	sort_tuple->class_label = DatumGetInt32(label_dat);
@@ -770,9 +776,13 @@ void sparse_fast_transfer_slot_to_sgd_tuple (
 
 	Datum k_dat = slot->tts_values[sgd_tupledesc->k_col];
 	ArrayType  *k_array = DatumGetArrayTypeP(k_dat);
-	int *k;
-    sort_tuple->k_len = my_parse_array_no_copy((struct varlena*) k_array, 
-            sizeof(int), (char **) &k);
+
+	sort_tuple->k_len = ArrayGetNItems(ARR_NDIM(k_array), ARR_DIMS(k_array));
+	int *k = (double *) ARR_DATA_PTR(k_array);
+
+	// int *k;
+    // sort_tuple->k_len = my_parse_array_no_copy((struct varlena*) k_array, 
+    //         sizeof(int), (char **) &k);
 
 	Assert(sort_tuple->k_len == v_num);
 	// 

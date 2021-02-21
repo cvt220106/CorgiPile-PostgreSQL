@@ -429,8 +429,12 @@ compute_dense_tuple_loss_LR(SortTuple* tp, Model* model)
 	int y = tp->class_label;
 
 	double wx = dot(model->w, tp->features_v, model->n_features);
-    double tuple_loss = log(1 + exp(-y * wx));
-	model->total_loss += tuple_loss;
+
+	double _ywx = -y * wx;
+	if (_ywx >= 35)
+		model->total_loss += _ywx;
+	else
+		model->total_loss += log(1 + exp(_ywx));
 
 
 	// By default, if f(wx) > 0.5, the outcome is positive, or negative otherwise
@@ -448,8 +452,12 @@ compute_sparse_tuple_loss_LR(SortTuple* tp, Model* model)
 {
 	int y = tp->class_label;
 	double wx = dot_dss(model->w, tp->features_k, tp->features_v, tp->k_len);
-    double tuple_loss = log(1 + exp(-y * wx));
-	model->total_loss += tuple_loss;
+
+	double _ywx = -y * wx;
+	if (_ywx >= 35)
+		model->total_loss += _ywx;
+	else
+		model->total_loss += log(1 + exp(_ywx));
 
 	// By default, if f(wx) > 0.5, the outcome is positive, or negative otherwise
 	double f_wx = sigma(wx);
@@ -916,10 +924,13 @@ fast_transfer_slot_to_sgd_tuple (
 	Datum v_dat = slot->tts_values[v_col];
 	ArrayType  *v_array = DatumGetArrayTypeP(v_dat); // Datum{0.1, 0.2, 0.3}
 	
-	double *v;
-    int v_num = my_parse_array_no_copy((struct varlena*) v_array, 
-            sizeof(float8), (char **) &v);
 
+    int	v_num = ArrayGetNItems(ARR_NDIM(v_array), ARR_DIMS(v_array));
+	double *v = (double *) ARR_DATA_PTR(v_array);
+
+	// double *v;
+    // int v_num = my_parse_array_no_copy((struct varlena*) v_array, 
+    //         sizeof(float8), (char **) &v);
 
 	Datum label_dat = slot->tts_values[label_col];
 	sgd_tuple->class_label = DatumGetInt32(label_dat);
@@ -934,9 +945,13 @@ fast_transfer_slot_to_sgd_tuple (
 		// k Datum array => int* k 
 		Datum k_dat = slot->tts_values[k_col];
 		ArrayType  *k_array = DatumGetArrayTypeP(k_dat);
-		int *k;
-    	int k_num = my_parse_array_no_copy((struct varlena*) k_array, 
-            	sizeof(int), (char **) &k);
+
+		int k_num = ArrayGetNItems(ARR_NDIM(k_array), ARR_DIMS(k_array));
+		int *k = (double *) ARR_DATA_PTR(k_array);
+
+		// int *k;
+    	// int k_num = my_parse_array_no_copy((struct varlena*) k_array, 
+        //     	sizeof(int), (char **) &k);
 		sgd_tuple->features_k = k;
 		sgd_tuple->k_len = k_num;
 

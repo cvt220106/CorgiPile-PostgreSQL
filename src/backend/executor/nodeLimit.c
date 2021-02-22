@@ -924,8 +924,7 @@ fast_transfer_slot_to_sgd_tuple (
 	Datum v_dat = slot->tts_values[v_col];
 	ArrayType  *v_array = DatumGetArrayTypeP(v_dat); // Datum{0.1, 0.2, 0.3}
 	
-
-    int	v_num = ArrayGetNItems(ARR_NDIM(v_array), ARR_DIMS(v_array));
+	int	v_num = ArrayGetNItems(ARR_NDIM(v_array), ARR_DIMS(v_array));
 	double *v = (double *) ARR_DATA_PTR(v_array);
 
 	// double *v;

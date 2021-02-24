@@ -1069,7 +1069,7 @@ void test_with_unshuffled_buffer(PlanState *outerNode, Model* model, int iter,
 				double iter_exec_time = (double)(iter_finish - iter_start) / CLOCKS_PER_SEC; 
 				double comp_loss_time = iter_exec_time - comp_grad_time;
 
-				elog(INFO, "[%s] [Iter %2d] Loss = %.2f, exec_t = %.2fs, grad_t = %.2fs, loss_t = = %.2fs", 
+				elog(INFO, "[%s] [Iter %2d] Loss = %.2f, exec_t = %.2fs, grad_t = %.2fs, loss_t = %.2fs", 
 					get_current_time(), iter, model->total_loss, iter_exec_time,
 					comp_grad_time, comp_loss_time);
 				*/
@@ -1138,7 +1138,7 @@ void test_without_buffer(PlanState *outerNode, Model* model, int iter,
 			double iter_exec_time = (double)(iter_finish - iter_start) / CLOCKS_PER_SEC; 
 			double comp_loss_time = iter_exec_time - comp_grad_time;
 					
-			elog(INFO, "[%s] [Iter %2d] Loss = %.2f, exec_t = %.2fs, grad_t = %.2fs, loss_t = = %.2fs", 
+			elog(INFO, "[%s] [Iter %2d] Loss = %.2f, exec_t = %.2fs, grad_t = %.2fs, loss_t = %.2fs", 
 				get_current_time(), iter, model->total_loss, iter_exec_time,
 				comp_grad_time, comp_loss_time);
 			model->total_loss = 0;
@@ -1213,6 +1213,14 @@ ExecLimit(LimitState *node)
 	double avg_comp_grad_time = 0;
 	double avg_comp_loss_time = 0;
 
+	double first_iter_exec_time = 0;
+	double first_comp_grad_time = 0;
+	double first_comp_loss_time = 0;
+
+	double second_iter_exec_time = 0;
+	double second_comp_grad_time = 0;
+	double second_comp_loss_time = 0;
+
 
 	int i;
 	for (i = 1; i <= iter_num; i++) {
@@ -1254,9 +1262,21 @@ ExecLimit(LimitState *node)
 		avg_comp_grad_time += grad_t;
 		avg_comp_loss_time += loss_t;
 
+		if (i == 1) {
+			first_iter_exec_time = exec_t;
+			first_comp_grad_time = grad_t;
+			first_comp_loss_time = loss_t;
+		} 
+		else if (i == 2) {
+			second_iter_exec_time = exec_t;
+			second_comp_grad_time = grad_t;
+			second_comp_loss_time = loss_t;
+		}
+		
+
 		model->accuracy = model->accuracy / model->tuple_num * 100;
 
-		elog(INFO, "[%s] [Iter %2d] Loss = %.2f, acc = %.2f, exec_t = %.2fs, grad_t = %.2fs, loss_t = = %.2fs", 
+		elog(INFO, "[%s] [Iter %2d] Loss = %.2f, acc = %.2f, exec_t = %.2fs, grad_t = %.2fs, loss_t = %.2fs", 
 				get_current_time(), i, model->total_loss, model->accuracy, exec_t,
 				grad_t, loss_t);
 				
@@ -1281,9 +1301,27 @@ ExecLimit(LimitState *node)
 	// elog(INFO, "[Model total loss %f]", model->total_loss);
 
 	// slot = output_model_record(node->ps.ps_ResultTupleSlot, model);
-	elog(INFO, "[%s] [Finish] avg_exec_t = %.2fs, avg_grad_t = %.2fs, avg_loss_t = = %.2fs", 
+	elog(INFO, "[%s] [Finish] avg_exec_t = %.2fs, avg_grad_t = %.2fs, avg_loss_t = %.2fs", 
 				get_current_time(), avg_iter_exec_time / iter_num,
 				avg_comp_grad_time / iter_num, avg_comp_loss_time / iter_num);
+
+	if (iter_num > 2) {
+		avg_iter_exec_time -= first_iter_exec_time;
+		avg_comp_grad_time -= first_comp_grad_time;
+		avg_comp_loss_time -= first_comp_loss_time;
+		elog(INFO, "[%s] [-first] avg_exec_t = %.2fs, avg_grad_t = %.2fs, avg_loss_t = %.2fs", 
+				get_current_time(), avg_iter_exec_time / (iter_num - 1),
+				avg_comp_grad_time / (iter_num - 1), avg_comp_loss_time / (iter_num -1));
+
+		avg_iter_exec_time -= second_iter_exec_time;
+		avg_comp_grad_time -= second_comp_grad_time;
+		avg_comp_loss_time -= second_comp_loss_time;
+
+		elog(INFO, "[%s] [-1 & 2] avg_exec_t = %.2fs, avg_grad_t = %.2fs, avg_loss_t = %.2fs", 
+				get_current_time(), avg_iter_exec_time / (iter_num - 2),
+				avg_comp_grad_time / (iter_num - 2), avg_comp_loss_time / (iter_num - 2));
+	}
+
 	slot = NULL;
 	return slot;
 }

@@ -12,6 +12,7 @@
         "tuple": "c",
         "__node_handle": "c",
         "random": "c",
-        "bitset": "c"
+        "bitset": "c",
+        "type_traits": "c"
     }
 }

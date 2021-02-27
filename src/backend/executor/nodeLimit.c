@@ -216,11 +216,8 @@ l1_shrink_mask_d(double* x, const double u, const int size) {
   for(i = size-1; i >= 0; i--) {
     xi = x[i];
     if (xi > u)		  { x[i] -= u; }
-    else if (xi > -u) { x[i] += u; }
+    else if (xi < -u) { x[i] += u; }
     else			  { x[i] = 0.0; }
-    //if (x[i] > u) { x[i] -= u; }
-    //else if (x[i] < -u) { x[i] += u; }
-    //else { x[i] = 0; }
   }
 }
 

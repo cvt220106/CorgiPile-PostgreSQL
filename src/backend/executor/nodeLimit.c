@@ -1218,6 +1218,8 @@ ExecLimit(LimitState *node)
 	double second_comp_grad_time = 0;
 	double second_comp_loss_time = 0;
 
+	double max_accuracy = 0;
+
 
 	int i;
 	for (i = 1; i <= iter_num; i++) {
@@ -1277,6 +1279,8 @@ ExecLimit(LimitState *node)
 				get_current_time(), i, model->total_loss, model->accuracy, exec_t,
 				grad_t, loss_t);
 				
+		if (model->accuracy > max_accuracy)
+			max_accuracy = model->accuracy;
 		model->total_loss = 0;
 		model->accuracy = 0;
 	}
@@ -1317,6 +1321,8 @@ ExecLimit(LimitState *node)
 		elog(INFO, "[%s] [-1 & 2] avg_exec_t = %.2fs, avg_grad_t = %.2fs, avg_loss_t = %.2fs", 
 				get_current_time(), avg_iter_exec_time / (iter_num - 2),
 				avg_comp_grad_time / (iter_num - 2), avg_comp_loss_time / (iter_num - 2));
+		
+		elog(INFO, "[%s] [MaxAcc] max_acc = %.2fs", get_current_time(), max_accuracy);
 	}
 
 	slot = NULL;

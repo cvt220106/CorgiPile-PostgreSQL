@@ -13,6 +13,8 @@
         "__node_handle": "c",
         "random": "c",
         "bitset": "c",
-        "type_traits": "c"
+        "type_traits": "c",
+        "time.h": "c",
+        "math.h": "c"
     }
 }

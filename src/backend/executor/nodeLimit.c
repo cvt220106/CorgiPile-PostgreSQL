@@ -2078,6 +2078,8 @@ ExecInitLimit(Limit *node, EState *estate, int eflags)
 
 	else if (is_prefix(set_table_name, "forest"))
    	 	n_features = 54;
+	else if (is_prefix(set_table_name, "susy"))
+   	 	n_features = 18;
     else if (is_prefix(set_table_name, "higgs"))
    	 	n_features = 28;
 	else if (is_prefix(set_table_name, "epsilon"))

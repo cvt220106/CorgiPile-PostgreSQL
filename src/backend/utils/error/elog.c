@@ -1210,7 +1210,7 @@ elog_start(const char *filename, int lineno, const char *funcname)
 	/* errno is saved now so that error parameter eval can't change it */
 	edata->saved_errno = errno;
 
-	// added by Lijie
+	// added by corgipile
 	edata->hide_stmt = true;
 	// added end
 }
@@ -2419,7 +2419,7 @@ send_message_to_server_log(ErrorData *edata)
 		}
 	}
 
-	// added by Lijie
+	// added by corgipile
 	edata->hide_stmt = true;
 	// added end
 

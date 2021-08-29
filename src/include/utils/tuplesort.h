@@ -61,7 +61,7 @@ extern void tupleshufflesort_end(Tuplesortstate *state);
 
 extern Tuplesortstate *tupleshufflesort_begin_heap(TupleDesc tupDesc, int workMem);
 
-// lijie: begin
+// corgipile: begin
 extern void tupleshufflesort_performshuffle(Tuplesortstate *state);
 
 extern void free_tupleshufflesort_state(Tuplesortstate* tuplesortstate);
@@ -72,7 +72,7 @@ extern bool tupleshufflesort_puttupleslot(Tuplesortstate *state, TupleTableSlot 
 
 extern bool is_shuffle_buffer_emtpy(Tuplesortstate *state);
 
-// lijie: end
+// corgipile: end
 
 extern void tupleshufflesort_gettupleslot(Tuplesortstate *state, 
 					   TupleTableSlot *slot);

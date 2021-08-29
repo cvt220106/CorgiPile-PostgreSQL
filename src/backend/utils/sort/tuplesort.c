@@ -495,12 +495,12 @@ static void copytup_heap_original(Tuplesortstate *state, SortTuple *stup, void *
 
 // static void free_sort_tuple(Tuplesortstate *state, SortTuple *stup);
 
-// Lijie: add begin
+// corgipile: add begin
 // static void shuffle_tuple(SortTuple *a, size_t n);
-// Lijie: add end
+// corgipile: add end
 
 
-// Lijie: add begin
+// corgipile: add begin
 // shuffle_tuple(state->memtuples, state->memtupcount, state);
 
 inline void
@@ -656,7 +656,7 @@ compute_loss_and_update_model(TupleShuffleSortState* state, Model* model,
 	return ith_tuple;
 }
 
-// Lijie: add end
+// corgipile: add end
 */
 /*
 bool 
@@ -1063,7 +1063,7 @@ puttuple_into_buffer(Tuplesortstate *state, SortTuple *tuple) {
 // 	state->eof_reached = true;
 // }
 
-// Lijie add begin
+// corgipile add begin
 /*
 bool
 puttuple_into_buffer(TupleShuffleSortState *state, ShuffleSortTuple *tuple, bool last_tuple) {
@@ -1097,7 +1097,7 @@ puttuple_into_buffer(TupleShuffleSortState *state, ShuffleSortTuple *tuple, bool
 }
 */
 
-// Lijie add end
+// corgipile add end
 
 /*
  * Special versions of qsort just for SortTuple objects.  qsort_tuple() sorts
@@ -1426,7 +1426,7 @@ void tupleshufflesort_swapbuffer(Tuplesortstate *state) {
 
 
 /*
- * Lijie: add begin
+ * corgipile: add begin
  * 
  * Accept one tuple while collecting input data for sort.
  *
@@ -1474,7 +1474,7 @@ tupleshufflesort_puttupleslot(Tuplesortstate *state, TupleTableSlot *slot)
 	
 }
 */
-// Lijie: add end
+// corgipile: add end
 
 /*
  * Accept one Datum while collecting input data for sort.

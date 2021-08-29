@@ -1,4 +1,5 @@
 # Global excludes across all subdirectories
+
 *.DS_STORE
 .DS_STORE
 .DS_Store

@@ -181,7 +181,7 @@ extern void slot_getallattrs(TupleTableSlot *slot);
 extern void slot_getsomeattrs(TupleTableSlot *slot, int attnum);
 extern bool slot_attisnull(TupleTableSlot *slot, int attnum);
 
-// added by Lijie
+// added by corgipile
 extern void slot_deform_tuple(TupleTableSlot *slot, int natts);
 // added end
 

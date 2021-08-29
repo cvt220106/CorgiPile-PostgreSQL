@@ -668,7 +668,7 @@ const char *const config_type_names[] =
 static struct config_bool ConfigureNamesBool[] =
 {
 	
-	// added by Lijie
+	// added by corgipile
 	{
 		{"run_test", PGC_USERSET, DB_ML,
 			gettext_noop("Enables test after each training iteration."),
@@ -1723,7 +1723,7 @@ static struct config_int ConfigureNamesInt[] =
 		NULL, NULL, NULL
 	},
 
-	// added by Lijie
+	// added by corgipile
 
 	{
 		{"io_big_block_size", PGC_USERSET, DB_ML,
@@ -2511,7 +2511,7 @@ static struct config_int ConfigureNamesInt[] =
 
 static struct config_real ConfigureNamesReal[] =
 {
-	// added by Lijie
+	// added by corgipile
 
 	{
 		{"learning_rate", PGC_USERSET, DB_ML,
@@ -2691,7 +2691,7 @@ static struct config_real ConfigureNamesReal[] =
 
 static struct config_string ConfigureNamesString[] =
 {
-	// added by Lijie
+	// added by corgipile
 	{
 		{"model_name", PGC_USERSET, DB_ML,
 			gettext_noop("Sets the training model (e.g., SVM, LR)."),

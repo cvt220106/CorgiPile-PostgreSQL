@@ -75,7 +75,7 @@
 #include "utils/sgdmodel.h"
 
 
-// added by Lijie
+// added by corgipile
 // #define IOBigBlockSize 10 * 1024 * 1024 // 10MB
 // #define IOBigBlockSize 80 * 1024 // 10 pages
 // #define IOBigBlockSize 80 * 1024 // 10 pages
@@ -131,7 +131,7 @@ initscan(HeapScanDesc scan, ScanKey key, bool is_rescan)
 	 */
 	scan->rs_nblocks = RelationGetNumberOfBlocks(scan->rs_rd);
 
-	// added by Lijie
+	// added by corgipile
 	// elog(LOG, "[Page] table_page_num = %d", scan->rs_nblocks);
 	// int block_page_num = set_io_big_block_size / (BLCKSZ / 1024);
 	// elog(LOG, "[Block] block_num = %d, block_page_num = %d", 
@@ -962,7 +962,7 @@ heapgettup_pagemode(HeapScanDesc scan,
 		linesleft = lineindex + 1;
 	}
 
-	// Lijie: add begin
+	// corgipile: add begin
 	else if (shuffle_order)
 	{
 		
@@ -1020,7 +1020,7 @@ heapgettup_pagemode(HeapScanDesc scan,
 
 			BlockNumber index = 0; // 0
 			scan->rs_startblock = scan->rs_shuffled_block_ids[index];
-			// Lijie: add end
+			// corgipile: add end
 			
 			page = scan->rs_startblock; /* first page */
 			heapgetpage(scan, page);
@@ -1040,7 +1040,7 @@ heapgettup_pagemode(HeapScanDesc scan,
 
 		linesleft = lines - lineindex;
 	}
-	// Lijie: add end
+	// corgipile: add end
 
 	else
 	{
@@ -1592,14 +1592,14 @@ heap_beginscan_internal(Relation relation, Snapshot snapshot,
 	scan->rs_allow_strat = allow_strat;
 	scan->rs_allow_sync = allow_sync;
 
-	// Lijie: add begin
+	// corgipile: add begin
 	scan->rs_shuffled_block_ids = NULL;
 	scan->shuffled_block_id_array_index = 0;
 	scan->io_big_block_num = 0;
 	scan->page_num_per_block = 0;
 	scan->drop_last = false;
 	scan->rescaned = false;
-	// Lijie: add end
+	// corgipile: add end
 
 
 	/*
@@ -1657,7 +1657,7 @@ heap_rescan(HeapScanDesc scan,
 	 */
 	initscan(scan, key, true);
 
-	// Lijie: add begin
+	// corgipile: add begin
 	if (scan->rs_shuffled_block_ids != NULL)
 		pfree(scan->rs_shuffled_block_ids);
 	
@@ -1667,7 +1667,7 @@ heap_rescan(HeapScanDesc scan,
 	scan->page_num_per_block = 0;
 	scan->drop_last = false;
 	scan->rescaned = true;
-	// Lijie: add end
+	// corgipile: add end
 }
 
 /* ----------------
@@ -1699,10 +1699,10 @@ heap_endscan(HeapScanDesc scan)
 	if (scan->rs_strategy != NULL)
 		FreeAccessStrategy(scan->rs_strategy);
 
-	// Lijie: add begin
+	// corgipile: add begin
 	if (scan->rs_shuffled_block_ids != NULL)
 		pfree(scan->rs_shuffled_block_ids);
-	// Lijie: add end
+	// corgipile: add end
 
 	pfree(scan);
 }

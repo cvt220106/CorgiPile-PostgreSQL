@@ -98,7 +98,7 @@ enum config_group
 	CUSTOM_OPTIONS,
 	DEVELOPER_OPTIONS,
 
-	// added by Lijie
+	// added by corgipile
 	DB_ML
 	// added end
 };

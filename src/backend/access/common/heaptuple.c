@@ -75,7 +75,7 @@
  * ----------------------------------------------------------------
  */
 
-// added by Lijie
+// added by corgipile
 void slot_deform_tuple(TupleTableSlot *slot, int natts);
 // added end
 

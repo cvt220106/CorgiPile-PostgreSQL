@@ -26,9 +26,9 @@ typedef enum ScanDirection
 	
 	ForwardScanDirection = 1,
 
-	// Lijie: add begin
+	// corgipile: add begin
     ShuffleScanDirection = 2
-    // Lijie: add end
+    // corgipile: add end
 } ScanDirection;
 
 /*

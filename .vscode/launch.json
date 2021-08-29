@@ -66,12 +66,7 @@
                 "MIMode": "gdb"
             },
             "targetArchitecture": "x64",
-            // "miDebuggerPath": "/Users/xulijie/.vscode/extensions/ms-vscode.cpptools-1.1.3/debugAdapters/lldb-mi/bin/lldb-mi",
-            // "logging": {
-            //     "trace": false,
-            //     "engineLogging": false,
-            //     "traceResponse": false
-            // }
+           
         }
     ]
 }

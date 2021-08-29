@@ -1374,7 +1374,7 @@ ExecLimit(LimitState *node)
 	// double comp_time = 0;
 
 	//for debug
-	//FILE* fp = fopen("/home/lijie/did.txt", "w");
+	//FILE* fp = fopen("/home/corgipile/did.txt", "w");
 	// iterations
 	int i;
 	for (i = 1; i <= iter_num; i++) {
@@ -1577,7 +1577,7 @@ ExecLimit(LimitState *node)
 	// double comp_time = 0;
 
 	//for debug
-	//FILE* fp = fopen("/home/lijie/did.txt", "w");
+	//FILE* fp = fopen("/home/corgipile/did.txt", "w");
 	// iterations
 	int i;
 	for (i = 1; i <= iter_num; i++) {
@@ -1786,7 +1786,7 @@ ExecLimit(LimitState *node)
 	double comp_time = 0;
 
 	// for debug
-	// FILE* fp = fopen("/home/lijie/did.txt", "w");
+	// FILE* fp = fopen("/home/corgipile/did.txt", "w");
 	// iterations
 	int i;
 	for (i = 1; i <= iter_num; i++) {

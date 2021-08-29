@@ -59,9 +59,9 @@ SeqNext(SeqScanState *node)
 	estate = node->ps.state;
 
 	
-    // Lijie: add begin
+    // corgipile: add begin
     estate->es_direction = ShuffleScanDirection;
-    // Lijie: add end
+    // corgipile: add end
 
 
 	direction = estate->es_direction;
@@ -196,7 +196,7 @@ ExecInitSeqScan(SeqScan *node, EState *estate, int eflags)
 	scanstate->ps.plan = (Plan *) node;
 	scanstate->ps.state = estate;
 
-	// added by Lijie
+	// added by corgipile
 	// scanstate->rescan_count = 0;
 	// added end
 	/*

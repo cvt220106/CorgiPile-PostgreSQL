@@ -15,6 +15,7 @@
         "bitset": "c",
         "type_traits": "c",
         "time.h": "c",
-        "math.h": "c"
+        "math.h": "c",
+        "sgdmodel.h": "c"
     }
 }

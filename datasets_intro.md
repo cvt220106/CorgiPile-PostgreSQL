@@ -1,6 +1,6 @@
 # In-DB ML Datasets
 
-The datasets used in our CorgiPile:
+The datasets used in our experiments:
 
 | Name | Type | \#Tuples | \#Features | Size in DB |
 | :------------- |:-------------:| :-----:|:-----:|:-----:|

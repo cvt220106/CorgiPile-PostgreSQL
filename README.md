@@ -13,7 +13,7 @@ can achieve comparable convergence rate with the full-shuffle based SGD, and 2.X
 
 # Implementation in PostgreSQL
 
-The following figure illustrates the implementation of CorgiPile with new operators and double-buffer optimization, in PostgreSQL.
+The following figure illustrates the implementation of CorgiPile with new operators and double-buffering optimization, in PostgreSQL.
 
 ![Implementation](corgipile-docs/impl/Shuffle-free-SGD-implementation.png)
 

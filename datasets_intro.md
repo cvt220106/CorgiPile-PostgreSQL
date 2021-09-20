@@ -44,6 +44,7 @@ After decompression, each tuple has `{feature_k[], feature_v[]} label` schema as
 There are several steps to import these data files into DB:
 
 1. Decompress these dataset files
+
 ```
 tar zxvf criteo_train_clustered.sql_-1.tar.gz
 bunzip2 criteo_train_clustered.sql_1.bz2
@@ -52,8 +53,9 @@ bunzip2 criteo_test.sql.bz2
 ```
 
 2. Create a table named as `criteo_clustered` in DB (like PostgreSQL)
-```
-# In PostgreSQL:
+
+```SQL
+e.g., In PostgreSQL:
 
 DROP TABLE IF EXISTS criteo_clustered CASCADE;
 
@@ -68,24 +70,25 @@ CREATE TABLE criteo_clustered (
 
 3. Import the negative tuples into DB
 
-```
-# The following command be executed in DB, 
-# because the first line of criteo_train_clustered.sql_-1 is a COPY command,
-# as "COPY criteo_clustered (k, v, label) FROM STDIN;";
+```SQL
+// The following command be executed in DB, 
+// because the first line of criteo_train_clustered.sql_-1 is a COPY command,
+// as "COPY criteo_clustered (k, v, label) FROM STDIN;";
 
 postgres/bin/psql -d YOUR_DB_NAME -f /datadisk/data/criteo/criteo_train_clustered.sql_-1
 ```
 
 4. Import the positive tuples into DB
-```
+
+```SQL
 postgres/bin/psql -d YOUR_DB_NAME -f /datadisk/data/criteo/criteo_train_clustered.sql_1
 
 ```
 
 5. Check the table size
 
-```
-mldb=# select pg_size_pretty(pg_table_size('criteo_clustered'));
+```SQL
+mldb= select pg_size_pretty(pg_table_size('criteo_clustered'));
  pg_size_pretty 
 ----------------
  50 GB
@@ -98,8 +101,8 @@ mldb=# select pg_size_pretty(pg_table_size('criteo_clustered'));
 
 If you would like to use the shuffled criteo dataset, you can create a table named `criteo_shuffled` using the `order by random()` command as follows. 
 
-```
-# e.g., in PostgreSQL
+```SQL
+// e.g., in PostgreSQL
 
 DROP TABLE IF EXISTS criteo_shuffled CASCADE;
 
@@ -150,8 +153,9 @@ bunzip2 FileName.bz2
 ```
 
 2. Create a table named as `yfcc_clustered` in DB (like PostgreSQL)
-```
-# In PostgreSQL:
+
+```SQL
+// In PostgreSQL:
 
 DROP TABLE IF EXISTS yfcc_clustered CASCADE;
 
@@ -166,10 +170,10 @@ DROP TABLE IF EXISTS yfcc_clustered CASCADE;
 3. Import the negative tuples into DB
 
 
-```
-# The following command be executed in DB, 
-# because the first line of yfcc_train_{0-5}_clustered.sql_-1 is a COPY command,
-# as "COPY yfcc_clustered (vec, labeli) FROM STDIN";
+```SQL
+// The following command be executed in DB, 
+// because the first line of yfcc_train_{0-5}_clustered.sql_-1 is a COPY command,
+// as "COPY yfcc_clustered (vec, labeli) FROM STDIN";
 
 postgres/bin/psql -d YOUR_DB_NAME -f /datadisk/data/yfcc/yfcc_train_{0-5}_clustered.sql_-1
 ```
@@ -178,7 +182,7 @@ You can also leave one of the data files (e.g., ID = 5) or some tuples in a data
 
 
 4. Import the positive tuples into DB
-```
+```SQL
 postgres/bin/psql -d YOUR_DB_NAME -f /datadisk/data/yfcc/yfcc_train_{0-5}_clustered.sql_1
 
 ```
@@ -186,8 +190,8 @@ You can also leave one of the data files (e.g., ID = 5) or some tuples in a data
 
 5. Check the table size
 
-```
-mldb=# select pg_size_pretty(pg_table_size('yfcc_clustered'));
+```SQL
+mldb= select pg_size_pretty(pg_table_size('yfcc_clustered'));
  pg_size_pretty 
 ----------------
  55 GB
@@ -199,8 +203,8 @@ mldb=# select pg_size_pretty(pg_table_size('yfcc_clustered'));
 
 If you would like to use the shuffled yfcc dataset, you can create a table named `yfcc_shuffled` using the `order by random()` command as follows.
 
-```
-# e.g., in PostgreSQL
+```SQL
+// e.g., in PostgreSQL
 
 DROP TABLE IF EXISTS yfcc_shuffled CASCADE;
 

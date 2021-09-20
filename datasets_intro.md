@@ -88,7 +88,7 @@ postgres/bin/psql -d YOUR_DB_NAME -f /datadisk/data/criteo/criteo_train_clustere
 5. Check the table size
 
 ```SQL
-mldb= select pg_size_pretty(pg_table_size('criteo_clustered'));
+mldb=# select pg_size_pretty(pg_table_size('criteo_clustered'));
  pg_size_pretty 
 ----------------
  50 GB
@@ -147,6 +147,7 @@ After decompression, each tuple has 4,096 features in `{}` and a label (+1/-1) a
 There are several steps to import these data files into DB:
 
 1. Decompress these dataset files
+
 ```
 bunzip2 FileName.bz2
 
@@ -182,16 +183,18 @@ You can also leave one of the data files (e.g., ID = 5) or some tuples in a data
 
 
 4. Import the positive tuples into DB
+
 ```SQL
 postgres/bin/psql -d YOUR_DB_NAME -f /datadisk/data/yfcc/yfcc_train_{0-5}_clustered.sql_1
 
 ```
+
 You can also leave one of the data files (e.g., ID = 5) or some tuples in a data file, as the test dataset.
 
 5. Check the table size
 
 ```SQL
-mldb= select pg_size_pretty(pg_table_size('yfcc_clustered'));
+mldb=# select pg_size_pretty(pg_table_size('yfcc_clustered'));
  pg_size_pretty 
 ----------------
  55 GB

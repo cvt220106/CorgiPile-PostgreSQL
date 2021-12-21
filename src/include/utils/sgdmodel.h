@@ -33,6 +33,11 @@ typedef struct Model {
     int iter_num;
     int tuple_num;
 	double accuracy;
+	
+	// for mini-batch SGD
+	int current_batch_num;
+    double* current_batch_gradient;
+
 } Model;
 
 typedef struct SGDTupleDesc

@@ -60,7 +60,7 @@ SeqNext(SeqScanState *node)
 
 	
     // corgipile: add begin
-    estate->es_direction = ShuffleScanDirection;
+    // estate->es_direction = ShuffleScanDirection;
     // corgipile: add end
 
 

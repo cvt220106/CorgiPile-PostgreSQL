@@ -1515,7 +1515,7 @@ tupleshufflesort_performshuffle(Tuplesortstate *state)
 	state->read_buf_count = state->write_buf_count;
 	state->write_buf_count = 0;
 
-	if (is_training && set_shuffle) {
+	if (set_tuple_shuffle > 0) {
 		if (state->read_buf_count < state->memtupsize) {
 			// init final_read_buf_indexes for the last partially filled buffer
 			int n = state->read_buf_count + 1;

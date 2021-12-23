@@ -5,17 +5,16 @@
 #define DEFAULT_BUFFER_TUPLE_NUM 325000  //50000 // 9000000
 
 #define DEFAULT_BATCH_SIZE  1
-#define DEFAULT_ITER_NUM  50
+#define DEFAULT_ITER_NUM  20
 #define DEFAULT_LEARNING_RATE	0.1 // 0.1 for higgs
 #define DEFAULT_MODEL_NAME "LR"
 #define DEFAULT_TABLE_NAME "yfcc_clustered" // "criteo" // "criteo_clustered" //"sample_criteo_clustered" //"splicesite_clustered" // "sample_splice_clustered"
 #define DEFAULT_DECAY 0.95
 #define DEFAULT_MU 0.00001 // 0.01 for higgs
 
-#define DEFAULT_SET_SHUFFLE true
+#define DEFAULT_BLOCK_SHUFFLE 0 // 0 (w/o block-shuffle), 1 (with block-shuffle)
+#define DEFAULT_TUPLE_SHUFFLE 0 // 0 (w/o tuple-shuffle), 1 (with tuple-shuffle using one buffer), 2 (with tuple-shuffle using two buffers)
 #define DEFAULT_USE_MALLOC false
-#define DEFAULT_USE_TRAIN_BUFFER_NUM 2
-#define DEFAULT_USE_TEST_BUFFER_NUM 0
 
 #define DEFAULT_IO_BIG_BLOCK_SIZE  800 // 1 page = 8K, default 10 pages
 #define DEFAULT_BUFFER_SIZE  800 // default 100 pages = 800KB
@@ -96,11 +95,10 @@ extern char* set_table_name;
 extern int table_page_number;
 
 extern bool set_run_test;
-extern bool set_shuffle;
 extern bool set_use_malloc;
 
-extern int set_use_train_buffer_num;
-extern int set_use_test_buffer_num;
+extern int set_block_shuffle;
+extern int set_tuple_shuffle;
 
 extern SGDTupleDesc* sgd_tupledesc;
 

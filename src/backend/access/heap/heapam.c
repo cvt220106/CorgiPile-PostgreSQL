@@ -866,7 +866,14 @@ heapgettup_pagemode(HeapScanDesc scan,
 {
 	HeapTuple	tuple = &(scan->rs_ctup);
 	bool		backward = ScanDirectionIsBackward(dir);
-	bool		shuffle_order = ScanDirectionIsShuffle(dir);
+	
+	if (set_block_shuffle > 0) {
+		dir = ShuffleScanDirection;
+	}
+
+	bool shuffle_order = ScanDirectionIsShuffle(dir);
+
+	
 	BlockNumber page;
 	bool		finished;
 	Page		dp;
@@ -1004,6 +1011,7 @@ heapgettup_pagemode(HeapScanDesc scan,
 				scan->rs_shuffled_block_ids[i] = i * scan->page_num_per_block;
 			
 			// only shuffing the blocks/pages for SGD training
+			/*
 			if (is_training) {
 				srand(time(0) + rand());
 
@@ -1015,6 +1023,18 @@ heapgettup_pagemode(HeapScanDesc scan,
 					scan->rs_shuffled_block_ids[i] = scan->rs_shuffled_block_ids[r];
 					scan->rs_shuffled_block_ids[r] = t;
 				}
+			}
+			*/
+
+			srand(time(0) + rand());
+
+			// rs_shuffled_block_ids = [5120, 3840, 0, 6400, 8960, 1280, 2560, 5120, 7680]
+			for (i = scan->io_big_block_num - 1; i > 0; i--) {
+				BlockNumber r = rand() % (i + 1);
+				// swap(a + i, a + r);
+				BlockNumber t = scan->rs_shuffled_block_ids[i];
+				scan->rs_shuffled_block_ids[i] = scan->rs_shuffled_block_ids[r];
+				scan->rs_shuffled_block_ids[r] = t;
 			}
 			
 

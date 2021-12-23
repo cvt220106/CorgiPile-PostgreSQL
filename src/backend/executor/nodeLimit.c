@@ -50,12 +50,13 @@ int table_page_number = 0;
 char* set_table_name = DEFAULT_TABLE_NAME;
 
 bool set_run_test = false;
-bool set_shuffle = DEFAULT_SET_SHUFFLE;
+int set_block_shuffle = DEFAULT_BLOCK_SHUFFLE;
+int set_tuple_shuffle = DEFAULT_TUPLE_SHUFFLE;
 bool is_training = true;
 
 bool set_use_malloc = DEFAULT_USE_MALLOC;
-int set_use_train_buffer_num = DEFAULT_USE_TRAIN_BUFFER_NUM;
-int set_use_test_buffer_num = DEFAULT_USE_TEST_BUFFER_NUM;
+
+// int set_use_test_buffer_num = DEFAULT_USE_TEST_BUFFER_NUM;
 
 SGDTupleDesc* sgd_tupledesc; // also used in nodeSort.c for parsing tuple_slot to double* features
 
@@ -143,6 +144,7 @@ add_and_scale(double* x, const int size, const double* y, const double c) {
     x[i] += y[i]*c;
   }
 }
+
 
 inline void
 add_c_dss(double* x, const int* k, const int sparseSize, const double c) {
@@ -410,7 +412,8 @@ batch_compute_dense_tuple_gradient_LR(SortTuple* tp, Model* model)
 {
 	int n = model->n_features;
     if (tp == NULL) {
-		add_and_scale(model->w, n, model->current_batch_gradient, 1 / model->current_batch_num);
+		if (model->current_batch_num > 0)
+			add_and_scale(model->w, n, model->current_batch_gradient, model->learning_rate / model->current_batch_num);
 		memset(model->current_batch_gradient, 0, sizeof(double) * n);
         model->current_batch_num = 0;
 		return;
@@ -423,15 +426,15 @@ batch_compute_dense_tuple_gradient_LR(SortTuple* tp, Model* model)
     double wx = dot(model->w, x, n);
 	double sig = sigma(-wx * y);
 
-	double c = model->learning_rate * y * sig; // scale factor
+	double c = sig * y; // scale factor
     // add_and_scale(model->w, n, x, c);
-
 	add_and_scale(model->current_batch_gradient, n, x, c);
 	
     model->current_batch_num += 1;
 
     if (model->current_batch_num == model->batch_size) {
-		add_and_scale(model->w, n, model->current_batch_gradient, 1 / model->current_batch_num);
+		
+		add_and_scale(model->w, n, model->current_batch_gradient, model->learning_rate / model->current_batch_num);
 		memset(model->current_batch_gradient, 0, sizeof(double) * n);
         model->current_batch_num = 0;
 	}      
@@ -467,7 +470,8 @@ batch_compute_sparse_tuple_gradient_LR(SortTuple* tp, Model* model)
 {
 	int n = model->n_features;
     if (tp == NULL) {
-		add_and_scale(model->w, n, model->current_batch_gradient, 1 / model->current_batch_num);
+		if (model->current_batch_num > 0)
+			add_and_scale(model->w, n, model->current_batch_gradient, model->learning_rate / model->current_batch_num);
 		memset(model->current_batch_gradient, 0, sizeof(double) * n);
         model->current_batch_num = 0;
 		return;
@@ -482,14 +486,14 @@ batch_compute_sparse_tuple_gradient_LR(SortTuple* tp, Model* model)
 	// grad
     double wx = dot_dss(w, k, v, k_len);
     double sig = sigma(-wx * y);
-    double c = model->learning_rate * y * sig; // scale factor
+    double c = sig * y; // scale factor
     
 	add_and_scale_dss(model->current_batch_gradient, k, v, k_len, c);
 	
     model->current_batch_num += 1;
 
     if (model->current_batch_num == model->batch_size) {
-		add_and_scale(model->w, n, model->current_batch_gradient, 1 / model->current_batch_num);
+		add_and_scale(model->w, n, model->current_batch_gradient, model->learning_rate / model->current_batch_num);
 		memset(model->current_batch_gradient, 0, sizeof(double) * n);
         model->current_batch_num = 0;
 	} 
@@ -572,7 +576,8 @@ batch_compute_dense_tuple_gradient_SVM(SortTuple* tp, Model* model)
 {
 	int n = model->n_features;
     if (tp == NULL) {
-		add_and_scale(model->w, n, model->current_batch_gradient, 1 / model->current_batch_num);
+		if (model->current_batch_num > 0)
+			add_and_scale(model->w, n, model->current_batch_gradient, model->learning_rate / model->current_batch_num);
 		memset(model->current_batch_gradient, 0, sizeof(double) * n);
         model->current_batch_num = 0;
 		return;
@@ -583,7 +588,7 @@ batch_compute_dense_tuple_gradient_SVM(SortTuple* tp, Model* model)
 	
 
     double wx = dot(model->w, x, n);
-    double c = model->learning_rate * y;
+    double c = y;
     // writes
     if(1 - y * wx > 0) {
         add_and_scale(model->current_batch_gradient, n, x, c);
@@ -592,7 +597,7 @@ batch_compute_dense_tuple_gradient_SVM(SortTuple* tp, Model* model)
     model->current_batch_num += 1;
 
     if (model->current_batch_num == model->batch_size) {
-		add_and_scale(model->w, n, model->current_batch_gradient, 1 / model->current_batch_num);
+		add_and_scale(model->w, n, model->current_batch_gradient, model->learning_rate / model->current_batch_num);
 		memset(model->current_batch_gradient, 0, sizeof(double) * n);
         model->current_batch_num = 0;
 	}      
@@ -630,7 +635,8 @@ batch_compute_sparse_tuple_gradient_SVM(SortTuple* tp, Model* model)
 
 	int n = model->n_features;
     if (tp == NULL) {
-		add_and_scale(model->w, n, model->current_batch_gradient, 1 / model->current_batch_num);
+		if (model->current_batch_num > 0)
+			add_and_scale(model->w, n, model->current_batch_gradient, model->learning_rate / model->current_batch_num);
 		memset(model->current_batch_gradient, 0, sizeof(double) * n);
         model->current_batch_num = 0;
 		return;
@@ -643,7 +649,7 @@ batch_compute_sparse_tuple_gradient_SVM(SortTuple* tp, Model* model)
 
 	// read and prepare
     double wx = dot_dss(model->w, k, v, k_len);
-    double c = model->learning_rate * y;
+    double c = y;
     // writes
     if(1 - y * wx > 0) {
         add_and_scale_dss(model->current_batch_gradient, k, v, k_len, c);
@@ -652,7 +658,7 @@ batch_compute_sparse_tuple_gradient_SVM(SortTuple* tp, Model* model)
     model->current_batch_num += 1;
 
     if (model->current_batch_num == model->batch_size) {
-		add_and_scale(model->w, n, model->current_batch_gradient, 1 / model->current_batch_num);
+		add_and_scale(model->w, n, model->current_batch_gradient, model->learning_rate / model->current_batch_num);
 		memset(model->current_batch_gradient, 0, sizeof(double) * n);
         model->current_batch_num = 0;
 	} 
@@ -1395,13 +1401,24 @@ ExecLimit(LimitState *node)
 
 		// train
 		is_training = true;
+		/**
+		shuffle_mode
 
-		if (set_use_train_buffer_num > 0) {
-			if (set_shuffle)
-				train_with_shuffled_buffer(outerNode, model, i);
-			else
-				train_with_unshuffled_buffer(outerNode, model, i);
-		}
+		Block-Only Shuffle (block-shuffle = 0, tuple-shuffle = 0, i.e., 0 buffer, 1 thread)
+		CorgiPile (block-shuffle = 1, tuple-shuffle = 2, i.e., 2 buffers for tuple shuffle, 2 threads)
+		CorgiPile-Single-Thread (block-shuffle = 1, tuple-shuffle = 1, i.e., 1 buffer, 1 thread)
+		No Shuffle (block-shuffle = 0, tuple-shuffle = 0, i.e, 0 buffer, 1 thread)
+
+		block-shuffle = 1
+		block-shuffle = 0
+
+		tuple-shuffle = 2 (2 buffers, 2 threads based shuffle)
+		tuple-shuffle = 1 (1 buffer, 1 thread based shuffle)
+		tuple-shuffle = 0 (0 buffer, 1 thread, no shuffle)
+		*/
+
+		if (set_tuple_shuffle > 0)
+			train_with_shuffled_buffer(outerNode, model, i);
 		else
 			train_without_buffer(outerNode, model, i, sort_tuple);
 		
@@ -1413,10 +1430,7 @@ ExecLimit(LimitState *node)
 
 		// test
 		is_training = false;
-		if (set_use_test_buffer_num > 0)
-			test_with_unshuffled_buffer(outerNode, model, i, iter_num);
-		else
-			test_without_buffer(outerNode, model, i, iter_num, sort_tuple);
+		test_without_buffer(outerNode, model, i, iter_num, sort_tuple);
 
 		gettimeofday(&loss_finish, NULL);
 		
@@ -2174,9 +2188,8 @@ ExecInitLimit(Limit *node, EState *estate, int eflags)
 	elog(INFO, "============== Begin Training on %s Using %s Model ==============", set_table_name, set_model_name);
 	elog(INFO, "[Param] model_name = %s", set_model_name);
 	elog(INFO, "[Param] use_malloc = %d", set_use_malloc);
-	elog(INFO, "[Param] shuffle = %d", set_shuffle);
-	elog(INFO, "[Param] use_train_buffer_num = %d", set_use_train_buffer_num);
-	elog(INFO, "[Param] use_test_buffer_num = %d", set_use_test_buffer_num);
+	elog(INFO, "[Param] block_shuffle = %d", set_block_shuffle);
+	elog(INFO, "[Param] tuple_shuffle = %d", set_tuple_shuffle);
 	elog(INFO, "[Param] work_mem = %s KB", work_mem_str);
 	elog(INFO, "[Param] block_page_num = %d pages", set_block_page_num);
 	// elog(INFO, "[Param] io_block_size = %d pages", set_io_big_block_size);

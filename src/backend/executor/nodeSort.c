@@ -475,7 +475,7 @@ ExecEndSort(SortState *node)
 	//elog(LOG, "end ExecClearTuple ps_ResultTupleSlot.");
 
 	//elog(INFO, "begin free_buffer.");
-	if (set_use_train_buffer_num > 0 || set_use_test_buffer_num > 0)
+	if (set_tuple_shuffle > 0)
 		free_buffer(node->tuplesortstate);
 	//elog(INFO, "end free_buffer.");
 	/*
@@ -494,7 +494,7 @@ ExecEndSort(SortState *node)
 	SO1_printf("ExecEndSort: %s\n",
 			   "sort node shutdown");
 
-	if (set_use_train_buffer_num == 2 || set_use_test_buffer_num == 2) {
+	if (set_tuple_shuffle == 2) {
 		Assert(pthread_mutex_destroy(&buffer_mutex) == 0);
     	Assert(pthread_mutex_destroy(&swap_mutex) == 0);
     	Assert(pthread_cond_destroy(&buffer_full_cond) == 0);
@@ -502,6 +502,23 @@ ExecEndSort(SortState *node)
 	}
 }
 
+TupleTableSlot *
+ExecSort(SortState *node)
+{
+	if (is_training) {
+		if (set_tuple_shuffle == 2)
+			return Exec_Double_Buffered_Sort(node);
+		else if (set_tuple_shuffle == 1)
+			return Exec_Single_Buffered_Sort(node);
+		else
+			return Exec_Unbuffered_Sort(node);
+	}
+	else {
+		return Exec_Unbuffered_Sort(node);
+	}
+}
+
+/*
 TupleTableSlot *
 ExecSort(SortState *node)
 {
@@ -522,6 +539,7 @@ ExecSort(SortState *node)
 			return Exec_Unbuffered_Sort(node);
 	}
 }
+*/
 
 
 /* ----------------------------------------------------------------
@@ -578,18 +596,12 @@ ExecReScanSort(SortState *node)
 	ExecClearTuple(node->ss.ps.ps_ResultTupleSlot);
 
 	if (is_training) {
-		if (set_use_train_buffer_num == 2)
+		if (set_tuple_shuffle == 2)
 			reset_sort_state(node, true);
-		else if (set_use_train_buffer_num == 1)
+		else if (set_tuple_shuffle == 1)
 			reset_sort_state(node, false);
 	}
 	
-	if (is_training == false) {
-		if (set_use_test_buffer_num == 2)
-			reset_sort_state(node, true);
-		else if (set_use_test_buffer_num == 1)
-			reset_sort_state(node, false);
-	}
 
 	// Assert(pthread_mutex_destroy(&buffer_mutex) == 0);
     // Assert(pthread_mutex_destroy(&swap_mutex) == 0);

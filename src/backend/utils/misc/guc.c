@@ -679,15 +679,6 @@ static struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 	{
-		{"shuffle", PGC_USERSET, DB_ML,
-			gettext_noop("Enables shuffling tuples in the buffer."),
-			NULL
-		},
-		&set_shuffle,
-		DEFAULT_SET_SHUFFLE,
-		NULL, NULL, NULL
-	},
-	{
 		{"use_malloc", PGC_USERSET, DB_ML,
 			gettext_noop("Use malloc to allocate memory instead of PG's MemoryContext."),
 			NULL
@@ -1748,21 +1739,21 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
-		{"use_train_buffer_num", PGC_USERSET, DB_ML,
+		{"tuple_shuffle", PGC_USERSET, DB_ML,
 			gettext_noop("Use buffer based training."),
 			NULL
 		},
-		&set_use_train_buffer_num,
-		DEFAULT_USE_TRAIN_BUFFER_NUM, 0, 2,
+		&set_tuple_shuffle,
+		DEFAULT_TUPLE_SHUFFLE, 0, 2,
 		NULL, NULL, NULL
 	},
 	{
-		{"use_test_buffer_num", PGC_USERSET, DB_ML,
+		{"block_shuffle", PGC_USERSET, DB_ML,
 			gettext_noop("Use buffer based testing."),
 			NULL
 		},
-		&set_use_test_buffer_num,
-		DEFAULT_USE_TEST_BUFFER_NUM, 0, 2,
+		&set_block_shuffle,
+		DEFAULT_BLOCK_SHUFFLE, 0, 1,
 		NULL, NULL, NULL
 	},
 

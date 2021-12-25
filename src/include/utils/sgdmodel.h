@@ -39,6 +39,9 @@ typedef struct Model {
 	// for mini-batch sparse data
 	double* w_old;
 
+	// for linear regression
+	double y_mean; // the mean of the labels
+
 } Model;
 
 typedef struct SGDTupleDesc
@@ -62,7 +65,7 @@ typedef struct
 	int*	 features_k;		/* features of a tuple, n_dim */	
 	int		 k_len;
 	double*  features_v;
-    int		 class_label;	/* the class label of a tuple, -1 if there is not any label */
+    double	 class_label;	/* the class label of a tuple, -1 if there is not any label */
 
 	int 	 sparse_array_len;
 	// the following variable are not used

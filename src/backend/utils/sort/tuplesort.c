@@ -716,7 +716,7 @@ void dense_fast_transfer_slot_to_sgd_tuple (
     //         sizeof(float8), (char **) &v);
 
 	Datum label_dat = slot->tts_values[sgd_tupledesc->label_col];
-	sort_tuple->class_label = DatumGetInt32(label_dat);
+	sort_tuple->class_label = DatumGetFloat8(label_dat);
 
 	// 
 	// parse and copy features_v
@@ -772,7 +772,7 @@ void sparse_fast_transfer_slot_to_sgd_tuple (
     //         sizeof(float8), (char **) &v);
 
 	Datum label_dat = slot->tts_values[sgd_tupledesc->label_col];
-	sort_tuple->class_label = DatumGetInt32(label_dat);
+	sort_tuple->class_label = DatumGetFloat8(label_dat);
 
 	int n_features = sgd_tupledesc->n_features;
 

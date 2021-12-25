@@ -131,7 +131,7 @@ typedef struct TupleTableSlot
 
 	double* features_k;
 	double* features_v;
-	int label;
+	double label;
 	SortTuple* read_buffer;
 	int read_buffer_size;
 	int			*read_buf_indexes;

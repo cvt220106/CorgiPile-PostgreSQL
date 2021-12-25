@@ -36,7 +36,7 @@ typedef struct SGDBatchState
 typedef struct SGDTuple
 {
 	double*	 features;		/* features of a tuple, n_dim */	
-    int		 class_label;	/* the class label of a tuple, -1 if there is not any label */
+    double	 class_label;	/* the class label of a tuple, -1 if there is not any label */
 	// int			tupindex;		/* the ith-tuple */
 } SGDTuple;
 

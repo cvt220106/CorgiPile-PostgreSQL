@@ -257,6 +257,9 @@ Model* init_model(int n_features) {
 	// for mini-batch on sparse data
 	model->w_old = (double *) palloc0(sizeof(double) * n_features);
 
+	// for linear regression
+	model->y_mean = 0;
+
     return model;
 }
 
@@ -1249,7 +1252,7 @@ fast_transfer_slot_to_sgd_tuple (
     //         sizeof(float8), (char **) &v);
 
 	Datum label_dat = slot->tts_values[label_col];
-	sgd_tuple->class_label = DatumGetInt32(label_dat);
+	sgd_tuple->class_label = DatumGetFloat8(label_dat);
 	sgd_tuple->features_v = v;
 
 	sgd_tuple->k_array = NULL;
@@ -1292,6 +1295,8 @@ inline
 void train_with_shuffled_buffer(PlanState *outerNode, Model* model, int iter) {
 	bool end_of_reach = false;
 
+
+
 	while(true) {
 		// get a tuple from ShuffleSortNode
 		TupleTableSlot* slot = ExecProcNode(outerNode);
@@ -1309,9 +1314,12 @@ void train_with_shuffled_buffer(PlanState *outerNode, Model* model, int iter) {
 
 				if (iter == 1) {
 					double avg_page_tuple_num = (double) model->tuple_num / table_page_number;
-					elog(INFO, "[%s] [Computed Param] table_tuple_num = %d, buffer_block_num = %.2f", 
+					model->y_mean = model->y_mean / model->tuple_num;
+
+					elog(INFO, "[%s] [Computed Param] table_tuple_num = %d, buffer_block_num = %.2f, y_mean = %.3f", 
 						get_current_time(), model->tuple_num, 
-						(double) set_buffer_tuple_num / (set_block_page_num * avg_page_tuple_num));
+						(double) set_buffer_tuple_num / (set_block_page_num * avg_page_tuple_num), model->y_mean);
+					
 				}
 
 				end_of_reach = true;
@@ -1320,9 +1328,13 @@ void train_with_shuffled_buffer(PlanState *outerNode, Model* model, int iter) {
 			}
 
 			compute_tuple_gradient(&read_buffer[read_buf_indexes[j]], model);	
+
+			
 				
-			if (iter == 1)
+			if (iter == 1) {
 				model->tuple_num += 1;
+				model->y_mean += read_buffer[read_buf_indexes[j]].class_label;
+			}
 		}
 	
 		if (end_of_reach)
@@ -1350,9 +1362,12 @@ void train_with_unshuffled_buffer(PlanState *outerNode, Model* model, int iter) 
 
 				if (iter == 1) {
 					double avg_page_tuple_num = (double) model->tuple_num / table_page_number;
-					elog(INFO, "[%s] [Computed Param] table_tuple_num = %d, buffer_block_num = %.2f", 
+					model->y_mean = model->y_mean / model->tuple_num;
+
+					elog(INFO, "[%s] [Computed Param] table_tuple_num = %d, buffer_block_num = %.2f, y_mean = %.3f", 
 						get_current_time(), model->tuple_num, 
-						(double) set_buffer_tuple_num / (set_block_page_num * avg_page_tuple_num));
+						(double) set_buffer_tuple_num / (set_block_page_num * avg_page_tuple_num), model->y_mean);					
+					
 				}
 
 				end_of_reach = true;
@@ -1363,8 +1378,10 @@ void train_with_unshuffled_buffer(PlanState *outerNode, Model* model, int iter) 
 			compute_tuple_gradient(&read_buffer[j], model);	
 			
 
-			if (iter == 1)
+			if (iter == 1) {
 				model->tuple_num += 1;
+				model->y_mean += read_buffer[j].class_label;
+			}
 		}
 	
 		if (end_of_reach)
@@ -1427,9 +1444,10 @@ void train_without_buffer(PlanState *outerNode, Model* model, int iter, SortTupl
 
 			if (iter == 1) {
 				double avg_page_tuple_num = (double) model->tuple_num / table_page_number;
-				elog(INFO, "[%s] [Computed Param] table_tuple_num = %d, buffer_block_num = %.2f", 
+				model->y_mean = model->y_mean / model->tuple_num;
+				elog(INFO, "[%s] [Computed Param] table_tuple_num = %d, buffer_block_num = %.2f, y_mean = %.3f", 
 					get_current_time(), model->tuple_num, 
-					(double) set_buffer_tuple_num / (set_block_page_num * avg_page_tuple_num));
+					(double) set_buffer_tuple_num / (set_block_page_num * avg_page_tuple_num), model->y_mean);
 			}
 
 			ExecReScan(outerNode);	
@@ -1444,8 +1462,10 @@ void train_without_buffer(PlanState *outerNode, Model* model, int iter, SortTupl
 		if (sort_tuple->k_array != NULL)
 			pfree((ArrayType *)(sort_tuple->k_array));
 
-		if (iter == 1)
+		if (iter == 1) {
 			model->tuple_num += 1;
+			model->y_mean += sort_tuple->class_label;
+		}
 	}
 }
 
@@ -1612,11 +1632,24 @@ ExecLimit(LimitState *node)
 		}
 		
 
-		model->accuracy = model->accuracy / model->tuple_num * 100;
+		if(strcmp(set_model_name, "LinearRegression") == 0 || strcmp(set_model_name, "linear") == 0 || strcmp(set_model_name, "Linear") == 0) {
+	
+			double mse_loss = model->total_loss / model->tuple_num;
+        	double rmse_loss = sqrt(mse_loss);
+        
+			model->accuracy = 1 - model->total_loss / model->accuracy;
 
-		elog(INFO, "[%s] [Iter %2d] Loss = %.2f, acc = %.2f, exec_t = %.2fs, grad_t = %.2fs, loss_t = %.2fs", 
+			elog(INFO, "[%s] [Iter %2d] Loss = %.3f, acc = %.3f, exec_t = %.2fs, grad_t = %.2fs, loss_t = %.2fs", 
+				get_current_time(), i, rmse_loss, model->accuracy, exec_t,
+				grad_t, loss_t);
+		}
+		else {
+			model->accuracy = model->accuracy / model->tuple_num * 100;
+
+			elog(INFO, "[%s] [Iter %2d] Loss = %.2f, acc = %.2f, exec_t = %.2fs, grad_t = %.2fs, loss_t = %.2fs", 
 				get_current_time(), i, model->total_loss, model->accuracy, exec_t,
 				grad_t, loss_t);
+		}
 				
 		if (model->accuracy > max_accuracy)
 			max_accuracy = model->accuracy;
@@ -2325,6 +2358,161 @@ bool is_prefix(char* table_name, char* prefix) {
 	return true;
 }
 
+
+/**
+ * for linear regression
+ * 
+ */
+ 
+inline void
+compute_dense_tuple_gradient_LinearRegression(SortTuple* tp, Model* model)
+{
+    double y = tp->class_label;
+    double* x = tp->features_v;
+
+    int n = model->n_features;
+
+    // compute gradients of the incoming tuple
+    double wx = dot(model->w, x, n);
+    double sig = y - wx;
+
+    double c = model->learning_rate * sig; // scale factor
+    add_and_scale(model->w, n, x, c);
+
+    // regularization
+    double u = model->mu * model->learning_rate;
+    // l2_shrink_mask_d(model->w, u, n);
+    l1_shrink_mask_d(model->w, u, n);
+}
+
+inline void
+batch_compute_dense_tuple_gradient_LinearRegression(SortTuple* tp, Model* model)
+{
+    int n = model->n_features;
+    if (tp == NULL) {
+        if (model->current_batch_num > 0)
+            add_and_scale(model->w, n, model->current_batch_gradient, 1.0 / model->current_batch_num);
+        memset(model->current_batch_gradient, 0, sizeof(double) * n);
+        model->current_batch_num = 0;
+        return;
+    }
+    
+    double y = tp->class_label;
+    double* x = tp->features_v;
+
+    // compute gradients of the incoming tuple
+    double wx = dot(model->w, x, n);
+    double sig = y - wx;
+
+    double c = model->learning_rate * sig; // scale factor
+    // add_and_scale(model->w, n, x, c);
+    add_and_scale(model->current_batch_gradient, n, x, c);
+    
+    model->current_batch_num += 1;
+
+    if (model->current_batch_num == model->batch_size) {
+        
+        add_and_scale(model->w, n, model->current_batch_gradient, 1.0 / model->current_batch_num);
+        memset(model->current_batch_gradient, 0, sizeof(double) * n);
+        model->current_batch_num = 0;
+    }      
+
+    // regularization
+    double u = model->mu * model->learning_rate;
+    // l2_shrink_mask_d(model->w, u, n);
+    l1_shrink_mask_d(model->w, u, n);
+}
+
+inline void
+compute_sparse_tuple_gradient_LinearRegression(SortTuple* tp, Model* model)
+{
+    double y = tp->class_label;
+    int* k = tp->features_k;
+    int k_len = tp->k_len;
+    double* v = tp->features_v;
+    double* w = model->w;
+    
+    // grad
+    double wx = dot_dss(w, k, v, k_len);
+    double sig = y - wx;
+    double c = model->learning_rate * sig; // scale factor
+    add_and_scale_dss(w, k, v, k_len, c);
+    // regularization
+    double u = model->mu * model->learning_rate;
+    l1_shrink_mask(w, u, k, k_len);
+}
+
+inline void
+batch_compute_sparse_tuple_gradient_LinearRegression(SortTuple* tp, Model* model)
+{
+    int n = model->n_features;
+    if (tp == NULL) {
+        if (model->current_batch_num > 0) {
+            memcpy(model->w, model->w_old, sizeof(double) * n);
+            model->current_batch_num = 0;
+        }
+        return;
+    }
+    
+    double y = tp->class_label;
+    int* k = tp->features_k;
+    int k_len = tp->k_len;
+    double* v = tp->features_v;
+    double* w = model->w_old;
+    
+    // grad
+    double wx = dot_dss(w, k, v, k_len);
+    double sig = y - wx;
+    double c = model->learning_rate * sig / model->batch_size; // scale factor
+    
+    add_and_scale_dss(model->w, k, v, k_len, c);
+    
+    model->current_batch_num += 1;
+
+    if (model->current_batch_num == model->batch_size) {
+        memcpy(model->w_old, model->w, sizeof(double) * n);
+        model->current_batch_num = 0;
+    } 
+
+    // regularization
+    double u = model->mu * model->learning_rate;
+    l1_shrink_mask(w, u, k, k_len);
+}
+
+
+inline void
+compute_dense_tuple_loss_LinearRegression(SortTuple* tp, Model* model)
+{
+    // double* x = tp->features_v;
+    double y = tp->class_label;
+
+    double wx = dot(model->w, tp->features_v, model->n_features);
+
+    double residuals = wx - y;
+    model->total_loss += pow(residuals, 2);
+    
+    double res = y - model->y_mean;
+
+    // Here, the accuracy is R^2 for linear regression  
+    model->accuracy += pow(res, 2);
+}
+
+inline void
+compute_sparse_tuple_loss_LinearRegression(SortTuple* tp, Model* model)
+{
+    double y = tp->class_label;
+    double wx = dot_dss(model->w, tp->features_k, tp->features_v, tp->k_len);
+
+    double residuals = wx - y;
+    
+    model->total_loss += residuals * residuals;
+    
+    double res = y - model->y_mean;
+
+    // Here, the accuracy is R^2 for linear regression  
+    model->accuracy += res * res;
+}
+
 /* ----------------------------------------------------------------
  *		ExecInitLimit
  *
@@ -2424,7 +2612,8 @@ ExecInitLimit(Limit *node, EState *estate, int eflags)
    	 	n_features = 2000;
 	else if (is_prefix(set_table_name, "yfcc"))
    	 	n_features = 4096;
-	
+	else if (is_prefix(set_table_name, "year")) // for YearPredictionMSD
+   	 	n_features = 90;
 
     sgdstate->model = init_model(n_features);
 	sgd_tupledesc = init_SGDTupleDesc(n_features, dense, max_sparse_count);
@@ -2462,6 +2651,24 @@ ExecInitLimit(Limit *node, EState *estate, int eflags)
 			else
 				compute_tuple_gradient = compute_sparse_tuple_gradient_SVM;
 			compute_tuple_loss = compute_sparse_tuple_loss_SVM;
+		}
+	}
+
+	else if(strcmp(set_model_name, "LinearRegression") == 0 || strcmp(set_model_name, "linear") == 0 || strcmp(set_model_name, "Linear") == 0) {
+		if (dense) {
+			if (sgdstate->model->batch_size > 1)
+				compute_tuple_gradient = batch_compute_dense_tuple_gradient_LinearRegression;
+			else
+				compute_tuple_gradient = compute_dense_tuple_gradient_LinearRegression;
+			
+			compute_tuple_loss = compute_dense_tuple_loss_LinearRegression;
+		}
+		else {
+			if (sgdstate->model->batch_size > 1)
+				compute_tuple_gradient = batch_compute_sparse_tuple_gradient_LinearRegression;
+			else
+				compute_tuple_gradient = compute_sparse_tuple_gradient_LinearRegression;
+			compute_tuple_loss = compute_sparse_tuple_loss_LinearRegression;
 		}
 	}
 
@@ -2545,3 +2752,9 @@ ExecReScanLimit(LimitState *node)
 	// if (node->ps.lefttree->chgParam == NULL)
 	// 	ExecReScan(node->ps.lefttree);
 }
+
+
+
+
+
+

@@ -254,6 +254,9 @@ Model* init_model(int n_features) {
 	model->current_batch_num = 0;
 	model->current_batch_gradient = (double *) palloc0(sizeof(double) * n_features);
 
+	// for mini-batch on sparse data
+	model->w_old = (double *) palloc0(sizeof(double) * n_features);
+
     return model;
 }
 
@@ -261,6 +264,7 @@ void ExecFreeModel(Model* model) {
     // free(model->gradient);
 	pfree(model->w);
 	pfree(model->current_batch_gradient);
+	pfree(model->w_old);
     pfree(model);
 
 }
@@ -413,7 +417,7 @@ batch_compute_dense_tuple_gradient_LR(SortTuple* tp, Model* model)
 	int n = model->n_features;
     if (tp == NULL) {
 		if (model->current_batch_num > 0)
-			add_and_scale(model->w, n, model->current_batch_gradient, model->learning_rate / model->current_batch_num);
+			add_and_scale(model->w, n, model->current_batch_gradient, 1.0 / model->current_batch_num);
 		memset(model->current_batch_gradient, 0, sizeof(double) * n);
         model->current_batch_num = 0;
 		return;
@@ -426,7 +430,7 @@ batch_compute_dense_tuple_gradient_LR(SortTuple* tp, Model* model)
     double wx = dot(model->w, x, n);
 	double sig = sigma(-wx * y);
 
-	double c = sig * y; // scale factor
+	double c = model->learning_rate * sig * y; // scale factor
     // add_and_scale(model->w, n, x, c);
 	add_and_scale(model->current_batch_gradient, n, x, c);
 	
@@ -434,7 +438,7 @@ batch_compute_dense_tuple_gradient_LR(SortTuple* tp, Model* model)
 
     if (model->current_batch_num == model->batch_size) {
 		
-		add_and_scale(model->w, n, model->current_batch_gradient, model->learning_rate / model->current_batch_num);
+		add_and_scale(model->w, n, model->current_batch_gradient, 1.0 / model->current_batch_num);
 		memset(model->current_batch_gradient, 0, sizeof(double) * n);
         model->current_batch_num = 0;
 	}      
@@ -445,6 +449,45 @@ batch_compute_dense_tuple_gradient_LR(SortTuple* tp, Model* model)
 	l1_shrink_mask_d(model->w, u, n);
 	
 }
+
+/*
+inline void
+batch_compute_dense_tuple_gradient_LR(SortTuple* tp, Model* model)
+{
+	int n = model->n_features;
+    if (tp == NULL) {
+		if (model->current_batch_num > 0) {
+			memcpy(model->w, model->w_old, sizeof(double) * n);
+        	model->current_batch_num = 0;
+		}
+		return;
+	}
+	
+	int y = tp->class_label;
+    double* x = tp->features_v;
+
+    // compute gradients of the incoming tuple
+    double wx = dot(model->w_old, x, n);
+	double sig = sigma(-wx * y);
+
+	double c = model->learning_rate * sig * y / model->batch_size; // scale factor
+    // add_and_scale(model->w, n, x, c);
+	add_and_scale(model->w, n, x, c);
+	
+    model->current_batch_num += 1;
+
+    if (model->current_batch_num == model->batch_size) {
+		memcpy(model->w_old, model->w, sizeof(double) * n);
+        model->current_batch_num = 0;
+	}      
+
+    // regularization
+	double u = model->mu * model->learning_rate;
+    // l2_shrink_mask_d(model->w, u, n);
+	l1_shrink_mask_d(model->w, u, n);
+	
+}
+*/
 
 inline void
 compute_sparse_tuple_gradient_LR(SortTuple* tp, Model* model)
@@ -465,6 +508,44 @@ compute_sparse_tuple_gradient_LR(SortTuple* tp, Model* model)
     l1_shrink_mask(w, u, k, k_len);
 }
 
+inline void
+batch_compute_sparse_tuple_gradient_LR(SortTuple* tp, Model* model)
+{
+    int n = model->n_features;
+    if (tp == NULL) {
+		if (model->current_batch_num > 0) {
+			memcpy(model->w, model->w_old, sizeof(double) * n);
+        	model->current_batch_num = 0;
+		}
+		return;
+	}
+	
+	int y = tp->class_label;
+	int* k = tp->features_k;
+	int k_len = tp->k_len;
+    double* v = tp->features_v;
+	double* w = model->w_old;
+    
+	// grad
+    double wx = dot_dss(w, k, v, k_len);
+    double sig = sigma(-wx * y);
+    double c = model->learning_rate * sig * y / model->batch_size; // scale factor
+    
+	add_and_scale_dss(model->w, k, v, k_len, c);
+	
+    model->current_batch_num += 1;
+
+    if (model->current_batch_num == model->batch_size) {
+		memcpy(model->w_old, model->w, sizeof(double) * n);
+        model->current_batch_num = 0;
+	} 
+
+	// regularization
+    double u = model->mu * model->learning_rate;
+    l1_shrink_mask(w, u, k, k_len);
+}
+
+/*
 inline void
 batch_compute_sparse_tuple_gradient_LR(SortTuple* tp, Model* model)
 {
@@ -502,6 +583,7 @@ batch_compute_sparse_tuple_gradient_LR(SortTuple* tp, Model* model)
     double u = model->mu * model->learning_rate;
     l1_shrink_mask(w, u, k, k_len);
 }
+*/
 
 inline void
 compute_dense_tuple_loss_LR(SortTuple* tp, Model* model)
@@ -527,6 +609,7 @@ compute_dense_tuple_loss_LR(SortTuple* tp, Model* model)
 		model->accuracy += 1;
 	}
 }
+
 
 inline void
 compute_sparse_tuple_loss_LR(SortTuple* tp, Model* model)
@@ -570,6 +653,42 @@ compute_dense_tuple_gradient_SVM(SortTuple* tp, Model* model)
     l1_shrink_mask_d(model->w, u, n);
 }
 
+/*
+inline void
+batch_compute_dense_tuple_gradient_SVM(SortTuple* tp, Model* model)
+{
+	int n = model->n_features;
+    if (tp == NULL) {
+		if (model->current_batch_num > 0) {
+			memcpy(model->w, model->w_old, sizeof(double) * n);
+        	model->current_batch_num = 0;
+		}
+		return;
+	}
+
+	int y = tp->class_label;
+    double* x = tp->features_v;
+	
+
+    double wx = dot(model->w_old, x, n);
+    double c = model->learning_rate * y / model->batch_size;
+    // writes
+    if(1 - y * wx > 0) {
+        add_and_scale(model->w, n, x, c);
+    }
+	
+    model->current_batch_num += 1;
+
+    if (model->current_batch_num == model->batch_size) {
+		memcpy(model->w_old, model->w, sizeof(double) * n);
+        model->current_batch_num = 0;
+	}      
+
+    // regularization
+    double u = model->mu * model->learning_rate;
+    l1_shrink_mask_d(model->w, u, n);
+}
+*/
 
 inline void
 batch_compute_dense_tuple_gradient_SVM(SortTuple* tp, Model* model)
@@ -577,7 +696,7 @@ batch_compute_dense_tuple_gradient_SVM(SortTuple* tp, Model* model)
 	int n = model->n_features;
     if (tp == NULL) {
 		if (model->current_batch_num > 0)
-			add_and_scale(model->w, n, model->current_batch_gradient, model->learning_rate / model->current_batch_num);
+			add_and_scale(model->w, n, model->current_batch_gradient, 1.0 / model->current_batch_num);
 		memset(model->current_batch_gradient, 0, sizeof(double) * n);
         model->current_batch_num = 0;
 		return;
@@ -588,7 +707,7 @@ batch_compute_dense_tuple_gradient_SVM(SortTuple* tp, Model* model)
 	
 
     double wx = dot(model->w, x, n);
-    double c = y;
+    double c = model->learning_rate * y;
     // writes
     if(1 - y * wx > 0) {
         add_and_scale(model->current_batch_gradient, n, x, c);
@@ -597,7 +716,7 @@ batch_compute_dense_tuple_gradient_SVM(SortTuple* tp, Model* model)
     model->current_batch_num += 1;
 
     if (model->current_batch_num == model->batch_size) {
-		add_and_scale(model->w, n, model->current_batch_gradient, model->learning_rate / model->current_batch_num);
+		add_and_scale(model->w, n, model->current_batch_gradient, 1.0 / model->current_batch_num);
 		memset(model->current_batch_gradient, 0, sizeof(double) * n);
         model->current_batch_num = 0;
 	}      
@@ -628,7 +747,7 @@ compute_sparse_tuple_gradient_SVM(SortTuple* tp, Model* model)
     l1_shrink_mask(model->w, u, k, k_len);
 }
 
-
+/*
 inline void
 batch_compute_sparse_tuple_gradient_SVM(SortTuple* tp, Model* model)
 {
@@ -660,6 +779,45 @@ batch_compute_sparse_tuple_gradient_SVM(SortTuple* tp, Model* model)
     if (model->current_batch_num == model->batch_size) {
 		add_and_scale(model->w, n, model->current_batch_gradient, model->learning_rate / model->current_batch_num);
 		memset(model->current_batch_gradient, 0, sizeof(double) * n);
+        model->current_batch_num = 0;
+	} 
+
+    // regularization
+    double u = model->mu * model->learning_rate;
+    l1_shrink_mask(model->w, u, k, k_len);
+}
+*/
+
+inline void
+batch_compute_sparse_tuple_gradient_SVM(SortTuple* tp, Model* model)
+{
+
+	int n = model->n_features;
+    if (tp == NULL) {
+		if (model->current_batch_num > 0) {
+			memcpy(model->w, model->w_old, sizeof(double) * n);
+        	model->current_batch_num = 0;
+		}
+		return;
+	}
+	
+	int y = tp->class_label;
+	int* k = tp->features_k;
+	int k_len = tp->k_len;
+    double* v = tp->features_v;
+
+	// read and prepare
+    double wx = dot_dss(model->w_old, k, v, k_len);
+    double c = model->learning_rate * y / model->batch_size;
+    // writes
+    if(1 - y * wx > 0) {
+        add_and_scale_dss(model->w, k, v, k_len, c);
+    }
+
+    model->current_batch_num += 1;
+
+    if (model->current_batch_num == model->batch_size) {
+		memcpy(model->w_old, model->w, sizeof(double) * n);
         model->current_batch_num = 0;
 	} 
 

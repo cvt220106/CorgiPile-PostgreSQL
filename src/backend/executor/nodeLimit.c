@@ -60,7 +60,7 @@ bool set_use_malloc = DEFAULT_USE_MALLOC;
 
 SGDTupleDesc* sgd_tupledesc; // also used in nodeSort.c for parsing tuple_slot to double* features
 
-static Model* init_model(int n_features);
+static Model* init_model(int n_features, int max_sparse_count);
 static void ExecFreeModel(Model* model);
 // static SGDBatchState* init_SGDBatchState(int n_features);
 // static SGDTuple* init_SGDTuple(int n_features);
@@ -232,7 +232,22 @@ log_sum(const double a, const double b) {
 }
 
 
-Model* init_model(int n_features) {
+inline void
+my_sparse_add_and_scale_dss(double* w, double* current_batch_gradient, const double c, Model *model) {
+  // e.g., model->feature_k_non_zeros = [1, 2, 3; 2, 3, 4; 1, 4, 6], model->feature_k_index = 9
+  int i;
+  for (i = 0; i < model->feature_k_index; i++) {
+	int index = model->feature_k_non_zeros[i];
+	w[index] += current_batch_gradient[index] * c;
+	current_batch_gradient[index] = 0;
+	model->feature_k_non_zeros[i] = 0;
+  }
+
+  model->feature_k_index = 0;
+}
+
+
+Model* init_model(int n_features, int max_sparse_count) {
     Model* model = (Model *) palloc(sizeof(Model));
 
 	model->model_name = set_model_name;
@@ -255,8 +270,9 @@ Model* init_model(int n_features) {
 	model->current_batch_gradient = (double *) palloc0(sizeof(double) * n_features);
 
 	// for mini-batch on sparse data
-	model->w_old = (double *) palloc0(sizeof(double) * n_features);
-
+	// model->w_old = (double *) palloc0(sizeof(double) * n_features);
+	model->feature_k_non_zeros = (int *)palloc0(sizeof(int) * max_sparse_count * set_batch_size);
+	model->feature_k_index = 0;
     return model;
 }
 
@@ -264,7 +280,8 @@ void ExecFreeModel(Model* model) {
     // free(model->gradient);
 	pfree(model->w);
 	pfree(model->current_batch_gradient);
-	pfree(model->w_old);
+	//pfree(model->w_old);
+	pfree(model->feature_k_non_zeros);
     pfree(model);
 
 }
@@ -508,6 +525,7 @@ compute_sparse_tuple_gradient_LR(SortTuple* tp, Model* model)
     l1_shrink_mask(w, u, k, k_len);
 }
 
+/*
 inline void
 batch_compute_sparse_tuple_gradient_LR(SortTuple* tp, Model* model)
 {
@@ -544,7 +562,7 @@ batch_compute_sparse_tuple_gradient_LR(SortTuple* tp, Model* model)
     double u = model->mu * model->learning_rate;
     l1_shrink_mask(w, u, k, k_len);
 }
-
+*/
 /*
 inline void
 batch_compute_sparse_tuple_gradient_LR(SortTuple* tp, Model* model)
@@ -584,6 +602,49 @@ batch_compute_sparse_tuple_gradient_LR(SortTuple* tp, Model* model)
     l1_shrink_mask(w, u, k, k_len);
 }
 */
+inline void
+batch_compute_sparse_tuple_gradient_LR(SortTuple* tp, Model* model)
+{
+	int n = model->n_features;
+    if (tp == NULL) {
+		if (model->current_batch_num > 0)
+			my_sparse_add_and_scale_dss(model->w, model->current_batch_gradient, model->learning_rate / model->current_batch_num, model);
+        model->current_batch_num = 0;
+		return;
+	}
+	
+	int y = tp->class_label;
+	int* k = tp->features_k;
+	int k_len = tp->k_len;
+    double* v = tp->features_v;
+	double* w = model->w;
+    
+	// grad
+    double wx = dot_dss(w, k, v, k_len);
+    double sig = sigma(-wx * y);
+    double c = sig * y; // scale factor
+    
+	add_and_scale_dss(model->current_batch_gradient, k, v, k_len, c);
+
+	// e.g., model->feature_k_non_zeros = [1, 2, 3; 2, 3, 4; 1, 4, 6]
+	int i;
+	for (i = 0; i < k_len; i++) {
+		model->feature_k_non_zeros[model->feature_k_index] = k[i];
+		model->feature_k_index += 1;
+	}
+	
+    model->current_batch_num += 1;
+
+    if (model->current_batch_num == model->batch_size) {
+		my_sparse_add_and_scale_dss(model->w, model->current_batch_gradient, model->learning_rate / model->current_batch_num, model);
+        model->current_batch_num = 0;
+	} 
+
+	// regularization
+    double u = model->mu * model->learning_rate;
+    l1_shrink_mask(w, u, k, k_len);
+}
+
 
 inline void
 compute_dense_tuple_loss_LR(SortTuple* tp, Model* model)
@@ -747,6 +808,51 @@ compute_sparse_tuple_gradient_SVM(SortTuple* tp, Model* model)
     l1_shrink_mask(model->w, u, k, k_len);
 }
 
+
+inline void
+batch_compute_sparse_tuple_gradient_SVM(SortTuple* tp, Model* model)
+{
+
+	int n = model->n_features;
+    if (tp == NULL) {
+		if (model->current_batch_num > 0)
+			my_sparse_add_and_scale_dss(model->w, model->current_batch_gradient, model->learning_rate / model->current_batch_num, model);
+        model->current_batch_num = 0;
+		return;
+	}
+
+	int y = tp->class_label;
+	int* k = tp->features_k;
+	int k_len = tp->k_len;
+    double* v = tp->features_v;
+
+	// read and prepare
+    double wx = dot_dss(model->w, k, v, k_len);
+    double c = y;
+    // writes
+    if(1 - y * wx > 0) {
+        add_and_scale_dss(model->current_batch_gradient, k, v, k_len, c);
+
+		// e.g., model->feature_k_non_zeros = [1, 2, 3; 2, 3, 4; 1, 4, 6]
+		int i;
+		for (i = 0; i < k_len; i++) {
+			model->feature_k_non_zeros[model->feature_k_index] = k[i];
+			model->feature_k_index += 1;
+		}
+    }
+
+    model->current_batch_num += 1;
+
+    if (model->current_batch_num == model->batch_size) {
+		my_sparse_add_and_scale_dss(model->w, model->current_batch_gradient, model->learning_rate / model->current_batch_num, model);
+        model->current_batch_num = 0;
+	} 
+
+    // regularization
+    double u = model->mu * model->learning_rate;
+    l1_shrink_mask(model->w, u, k, k_len);
+}
+
 /*
 inline void
 batch_compute_sparse_tuple_gradient_SVM(SortTuple* tp, Model* model)
@@ -788,6 +894,7 @@ batch_compute_sparse_tuple_gradient_SVM(SortTuple* tp, Model* model)
 }
 */
 
+/*
 inline void
 batch_compute_sparse_tuple_gradient_SVM(SortTuple* tp, Model* model)
 {
@@ -825,6 +932,7 @@ batch_compute_sparse_tuple_gradient_SVM(SortTuple* tp, Model* model)
     double u = model->mu * model->learning_rate;
     l1_shrink_mask(model->w, u, k, k_len);
 }
+*/
 
 inline void
 compute_dense_tuple_loss_SVM(SortTuple* tp, Model* model)
@@ -2426,7 +2534,7 @@ ExecInitLimit(Limit *node, EState *estate, int eflags)
    	 	n_features = 4096;
 	
 
-    sgdstate->model = init_model(n_features);
+    sgdstate->model = init_model(n_features, max_sparse_count);
 	sgd_tupledesc = init_SGDTupleDesc(n_features, dense, max_sparse_count);
 
 	if (strcmp(set_model_name, "LR") == 0 || strcmp(set_model_name, "lr") == 0) {

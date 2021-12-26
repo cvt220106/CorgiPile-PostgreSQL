@@ -36,8 +36,11 @@ typedef struct Model {
 	// for mini-batch SGD
 	int current_batch_num;
     double* current_batch_gradient;
+	
 	// for mini-batch sparse data
-	double* w_old;
+	// double* w_old;
+	int* feature_k_non_zeros;
+	int feature_k_index;
 
 } Model;
 

@@ -44,6 +44,7 @@ double set_decay = DEFAULT_DECAY;
 double set_mu = DEFAULT_MU;
 char* set_model_name = DEFAULT_MODEL_NAME;
 int table_page_number = 0;
+int set_class_num = DEFAULT_CLASS_NUM;
 
 // char* table_name = "dflife";
 // char* set_table_name = "forest";
@@ -125,6 +126,19 @@ dot(const double* x, const double* y, const int size) {
   return ret;
 }
 
+
+// for softmax regression
+inline double
+softmax_dot(const double* w, const int j, const double* x, const int n, const int K) {
+  double ret = 0.0;
+  int i;
+  for(i = 0; i < n; i++) {
+	double wji = w[K * i + j]; 
+    ret += wji * x[i];
+  }
+  return ret;
+}
+
 // from bismarck
 inline double
 dot_dss(const double* x, const int* k, const double* v, const int sparseSize) {
@@ -145,6 +159,16 @@ add_and_scale(double* x, const int size, const double* y, const double c) {
   }
 }
 
+// for softmax regression
+softmax_add_and_scale(double* w, const int j, const int n, const double* x, const double c, const int K) {
+  double ret = 0.0;
+  int i;
+  for(i = 0; i < n; i++) {
+	// wjx += x[i] * c
+    w[K * i + j] += x[i] * c;
+  }
+  return ret;
+}
 
 inline void
 add_c_dss(double* x, const int* k, const int sparseSize, const double c) {
@@ -259,11 +283,15 @@ Model* init_model(int n_features, int max_sparse_count) {
 	model->n_features = n_features;
 	model->decay = set_decay;
 	model->mu = set_mu;
+	model->class_num = set_class_num;
 
 	model->accuracy = 0;
 
     // use memorycontext later
-	model->w = (double *) palloc0(sizeof(double) * n_features);
+	if (model->class_num > 2)
+		model->w = (double *) palloc0(sizeof(double) * n_features * model->class_num);
+	else
+		model->w = (double *) palloc0(sizeof(double) * n_features);
 	//memset(model->w, 0, sizeof(double) * n_features);
 
 	model->current_batch_num = 0;
@@ -2652,4 +2680,81 @@ ExecReScanLimit(LimitState *node)
 	//  */
 	// if (node->ps.lefttree->chgParam == NULL)
 	// 	ExecReScan(node->ps.lefttree);
+}
+
+
+// for softmax regression
+
+inline void
+compute_dense_tuple_gradient_Softmax(SortTuple* tp, Model* model)
+{
+    int y = tp->class_label; // 0， 1， 2， 3 (from 0), here K = 4
+    double* x = tp->features_v; 
+
+    int n = model->n_features;
+	int K = model->class_num;
+
+	double gradient[K];
+	double sum = 0;
+
+	// wx_K_1 = np.exp(np.transpose(self.w).dot(x))
+	int j;
+	for (j = 0; j < K; j++) {
+		double wjx = softmax_dot(model->w, j, x, n, K);
+		gradient[j] = exp(wjx);
+		sum += gradient[j];
+	}
+
+	for (j = 0; j < K; j++) {
+		double c;
+		if (j == y)
+			c = model->learning_rate * (1.0 - gradient[j] / sum);
+		else
+			c = -1.0 * model->learning_rate * gradient[j] / sum;
+		softmax_add_and_scale(model->w, j, n, x, c, K);
+
+		// regularization
+		// double u = model->mu * model->learning_rate;
+    	// // l2_shrink_mask_d(model->w, u, n);
+		// l1_shrink_mask_d(model->w, u, n);
+	}
+    
+}
+
+
+inline void
+compute_dense_tuple_loss_Softmax(SortTuple* tp, Model* model)
+{
+	// double* x = tp->features_v;
+	int y = tp->class_label;
+	double* x = tp->features_v; 
+
+	int n = model->n_features;
+	int K = model->class_num;
+
+	double gradient[K];
+	double sum = 0;
+
+	int top1 = 0;
+	int top1_label = 0;
+
+	// wx_K_1 = np.exp(np.transpose(self.w).dot(x))
+	int j;
+	for (j = 0; j < model->class_num; j++) {
+		double wjx = softmax_dot(model->w, j, x, n, K);
+		gradient[j] = exp(wjx);
+		sum += gradient[j];
+
+		if (gradient[j] > top1) {
+			top1_label = j;
+			top1 = gradient[j];
+		}
+	}
+
+	if (top1_label == y)
+		model->accuracy += 1;
+
+	double tuple_loss = -1.0 * log(gradient[y] / sum);
+	model->total_loss += tuple_loss;
+	
 }

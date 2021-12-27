@@ -1803,6 +1803,17 @@ static struct config_int ConfigureNamesInt[] =
 		DEFAULT_ITER_NUM, 1, INT_MAX,
 		NULL, NULL, NULL
 	},
+
+	{
+		{"class_num", PGC_USERSET, DB_ML,
+			gettext_noop("Sets the class number of labels."),
+			gettext_noop("This default value is 2."),
+			NULL
+		},
+		&set_class_num,
+		DEFAULT_CLASS_NUM, 1, INT_MAX,
+		NULL, NULL, NULL
+	},
 	// added end
 
 	{

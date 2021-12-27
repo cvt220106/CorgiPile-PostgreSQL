@@ -11,6 +11,7 @@
 #define DEFAULT_TABLE_NAME "yfcc_clustered" // "criteo" // "criteo_clustered" //"sample_criteo_clustered" //"splicesite_clustered" // "sample_splice_clustered"
 #define DEFAULT_DECAY 0.95
 #define DEFAULT_MU 0.00001 // 0.01 for higgs
+#define DEFAULT_CLASS_NUM 2
 
 #define DEFAULT_BLOCK_SHUFFLE 0 // 0 (w/o block-shuffle), 1 (with block-shuffle)
 #define DEFAULT_TUPLE_SHUFFLE 0 // 0 (w/o tuple-shuffle), 1 (with tuple-shuffle using one buffer), 2 (with tuple-shuffle using two buffers)
@@ -19,6 +20,8 @@
 #define DEFAULT_IO_BIG_BLOCK_SIZE  800 // 1 page = 8K, default 10 pages
 #define DEFAULT_BUFFER_SIZE  800 // default 100 pages = 800KB
 #define DEFAULT_BUFFER_BLOCK_NUM 1.0
+
+
 
 typedef struct Model {
     char* model_name;
@@ -32,6 +35,9 @@ typedef struct Model {
     int iter_num;
     int tuple_num;
 	double accuracy;
+
+	// for softmax regression, e.g., for iris dataset, there are 3 classes.
+	int class_num;
 	
 	// for mini-batch SGD
 	int current_batch_num;
@@ -93,6 +99,7 @@ extern int set_iter_num;
 extern double set_learning_rate;
 extern double set_decay;
 extern double set_mu;
+extern int set_class_num;
 
 extern char* set_model_name;
 extern char* set_table_name;

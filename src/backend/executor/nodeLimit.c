@@ -160,14 +160,14 @@ add_and_scale(double* x, const int size, const double* y, const double c) {
 }
 
 // for softmax regression
+inline void
 softmax_add_and_scale(double* w, const int j, const int n, const double* x, const double c, const int K) {
-  double ret = 0.0;
   int i;
   for(i = 0; i < n; i++) {
 	// wjx += x[i] * c
-    w[K * i + j] += x[i] * c;
+	int index = K * i + j;
+    w[index] += x[i] * c;
   }
-  return ret;
 }
 
 inline void
@@ -999,6 +999,140 @@ compute_sparse_tuple_loss_SVM(SortTuple* tp, Model* model)
 
 
 
+// for softmax regression
+
+inline void
+compute_dense_tuple_gradient_Softmax(SortTuple* tp, Model* model)
+{
+    int y = tp->class_label; // 0， 1， 2， 3 (from 0), here K = 4
+    double* x = tp->features_v; 
+
+    int n = model->n_features;
+	int K = model->class_num;
+
+	double gradient[K];
+	double sum = 0.0;
+
+	// wx_K_1 = np.exp(np.transpose(self.w).dot(x))
+	int j;
+	for (j = 0; j < K; j++) {
+		double wjx = softmax_dot(model->w, j, x, n, K);
+		gradient[j] = exp(wjx);
+		sum += gradient[j];
+	}
+
+	for (j = 0; j < K; j++) {
+		double c;
+		if (j == y)
+			c = model->learning_rate * (1.0 - gradient[j] / sum);
+		else
+			c = -1.0 * model->learning_rate * gradient[j] / sum;
+		softmax_add_and_scale(model->w, j, n, x, c, K);
+
+		// regularization
+		// double u = model->mu * model->learning_rate;
+    	// // l2_shrink_mask_d(model->w, u, n);
+		// l1_shrink_mask_d(model->w, u, n);
+	}
+    
+}
+
+  
+
+inline void
+batch_compute_dense_tuple_gradient_Softmax(SortTuple* tp, Model* model)
+{
+    int y = tp->class_label; // 0， 1， 2， 3 (from 0), here K = 4
+    double* x = tp->features_v; 
+
+    int n = model->n_features;
+	int K = model->class_num;
+
+
+	if (tp == NULL) {
+		if (model->current_batch_num > 0) {
+			int j;
+			for (j = 0; j < K; j++) 
+				softmax_add_and_scale(model->w, j, n, model->current_batch_gradient, 1.0 / model->current_batch_num, K);	
+		}
+			
+		memset(model->current_batch_gradient, 0, sizeof(double) * n);
+        model->current_batch_num = 0;
+		return;
+	}
+
+	double gradient[K];
+	double sum = 0.0;
+
+	// wx_K_1 = np.exp(np.transpose(self.w).dot(x))
+	int j;
+	for (j = 0; j < K; j++) {
+		double wjx = softmax_dot(model->w, j, x, n, K);
+		gradient[j] = exp(wjx);
+		sum += gradient[j];
+	}
+
+	for (j = 0; j < K; j++) {
+		double c;
+		if (j == y)
+			c = model->learning_rate * (1.0 - gradient[j] / sum);
+		else
+			c = -1.0 * model->learning_rate * gradient[j] / sum;
+		softmax_add_and_scale(model->current_batch_gradient, j, n, x, c, K);
+
+		// regularization
+		// double u = model->mu * model->learning_rate;
+    	// // l2_shrink_mask_d(model->w, u, n);
+		// l1_shrink_mask_d(model->w, u, n);
+	}
+
+    model->current_batch_num += 1;
+
+    if (model->current_batch_num == model->batch_size) {
+		for (j = 0; j < K; j++) 
+				softmax_add_and_scale(model->w, j, n, model->current_batch_gradient, 1.0 / model->current_batch_num, K);	
+		memset(model->current_batch_gradient, 0, sizeof(double) * n);
+        model->current_batch_num = 0;
+	}    
+}
+
+
+inline void
+compute_dense_tuple_loss_Softmax(SortTuple* tp, Model* model)
+{
+	// double* x = tp->features_v;
+	int y = tp->class_label;
+	double* x = tp->features_v; 
+
+	int n = model->n_features;
+	int K = model->class_num;
+
+	double gradient[K];
+	double sum = 0.0;
+
+	double top1 = 0.0;
+	int top1_label = 0;
+
+	// wx_K_1 = np.exp(np.transpose(self.w).dot(x))
+	int j;
+	for (j = 0; j < K; j++) {
+		double wjx = softmax_dot(model->w, j, x, n, K);
+		gradient[j] = exp(wjx);
+		sum += gradient[j];
+
+		if (gradient[j] > top1) {
+			top1_label = j;
+			top1 = gradient[j];
+		}
+	}
+
+	if (top1_label == y)
+		model->accuracy += 1;
+
+	double tuple_loss = -1.0 * log(gradient[y] / sum);
+	model->total_loss += tuple_loss;
+	
+}
 /*
 static void
 compute_tuple_gradient_LR(SGDTuple* tp, Model* model, SGDBatchState* batchstate)
@@ -2482,6 +2616,7 @@ ExecInitLimit(Limit *node, EState *estate, int eflags)
 	elog(INFO, "============== Begin Training on %s Using %s Model ==============", set_table_name, set_model_name);
 	elog(INFO, "[Param] model_name = %s", set_model_name);
 	elog(INFO, "[Param] use_malloc = %d", set_use_malloc);
+	elog(INFO, "[Param] class_num = %d", set_class_num);
 	elog(INFO, "[Param] block_shuffle = %d", set_block_shuffle);
 	elog(INFO, "[Param] tuple_shuffle = %d", set_tuple_shuffle);
 	elog(INFO, "[Param] work_mem = %s KB", work_mem_str);
@@ -2561,7 +2696,16 @@ ExecInitLimit(Limit *node, EState *estate, int eflags)
 	else if (is_prefix(set_table_name, "yfcc"))
    	 	n_features = 4096;
 	
+	else if (is_prefix(set_table_name, "iris")) 
+   	 	n_features = 4;
 
+	else if (is_prefix(set_table_name, "mnist")) 
+   	 	n_features = 780;
+	
+	else if (is_prefix(set_table_name, "mnist8m")) 
+   	 	n_features = 784;
+		
+	
     sgdstate->model = init_model(n_features, max_sparse_count);
 	sgd_tupledesc = init_SGDTupleDesc(n_features, dense, max_sparse_count);
 
@@ -2598,6 +2742,16 @@ ExecInitLimit(Limit *node, EState *estate, int eflags)
 			else
 				compute_tuple_gradient = compute_sparse_tuple_gradient_SVM;
 			compute_tuple_loss = compute_sparse_tuple_loss_SVM;
+		}
+	}
+	else if(strcmp(set_model_name, "Softmax") == 0 || strcmp(set_model_name, "softmax") == 0) {
+		if (dense) {
+			if (sgdstate->model->batch_size > 1)
+				compute_tuple_gradient = batch_compute_dense_tuple_gradient_Softmax;
+			else
+				compute_tuple_gradient = compute_dense_tuple_gradient_Softmax;
+			
+			compute_tuple_loss = compute_dense_tuple_loss_Softmax;
 		}
 	}
 
@@ -2683,78 +2837,3 @@ ExecReScanLimit(LimitState *node)
 }
 
 
-// for softmax regression
-
-inline void
-compute_dense_tuple_gradient_Softmax(SortTuple* tp, Model* model)
-{
-    int y = tp->class_label; // 0， 1， 2， 3 (from 0), here K = 4
-    double* x = tp->features_v; 
-
-    int n = model->n_features;
-	int K = model->class_num;
-
-	double gradient[K];
-	double sum = 0;
-
-	// wx_K_1 = np.exp(np.transpose(self.w).dot(x))
-	int j;
-	for (j = 0; j < K; j++) {
-		double wjx = softmax_dot(model->w, j, x, n, K);
-		gradient[j] = exp(wjx);
-		sum += gradient[j];
-	}
-
-	for (j = 0; j < K; j++) {
-		double c;
-		if (j == y)
-			c = model->learning_rate * (1.0 - gradient[j] / sum);
-		else
-			c = -1.0 * model->learning_rate * gradient[j] / sum;
-		softmax_add_and_scale(model->w, j, n, x, c, K);
-
-		// regularization
-		// double u = model->mu * model->learning_rate;
-    	// // l2_shrink_mask_d(model->w, u, n);
-		// l1_shrink_mask_d(model->w, u, n);
-	}
-    
-}
-
-
-inline void
-compute_dense_tuple_loss_Softmax(SortTuple* tp, Model* model)
-{
-	// double* x = tp->features_v;
-	int y = tp->class_label;
-	double* x = tp->features_v; 
-
-	int n = model->n_features;
-	int K = model->class_num;
-
-	double gradient[K];
-	double sum = 0;
-
-	int top1 = 0;
-	int top1_label = 0;
-
-	// wx_K_1 = np.exp(np.transpose(self.w).dot(x))
-	int j;
-	for (j = 0; j < model->class_num; j++) {
-		double wjx = softmax_dot(model->w, j, x, n, K);
-		gradient[j] = exp(wjx);
-		sum += gradient[j];
-
-		if (gradient[j] > top1) {
-			top1_label = j;
-			top1 = gradient[j];
-		}
-	}
-
-	if (top1_label == y)
-		model->accuracy += 1;
-
-	double tuple_loss = -1.0 * log(gradient[y] / sum);
-	model->total_loss += tuple_loss;
-	
-}

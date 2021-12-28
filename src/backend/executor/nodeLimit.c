@@ -171,6 +171,14 @@ softmax_add_and_scale(double* w, const int j, const int n, const double* x, cons
 }
 
 inline void
+batch_softmax_add_and_scale(double* w, const int n, const double* batch_w, const double c, const int K) {
+  int i;
+  for(i = 0; i < n * K; i++) {
+    w[i] += batch_w[i] * c;
+  }
+}
+
+inline void
 add_c_dss(double* x, const int* k, const int sparseSize, const double c) {
   int i;
   for(i = sparseSize - 1; i >= 0; i--) {
@@ -287,15 +295,20 @@ Model* init_model(int n_features, int max_sparse_count) {
 
 	model->accuracy = 0;
 
+	model->current_batch_num = 0;
     // use memorycontext later
-	if (model->class_num > 2)
+	if (model->class_num > 2) {
 		model->w = (double *) palloc0(sizeof(double) * n_features * model->class_num);
-	else
+		model->current_batch_gradient = (double *) palloc0(sizeof(double) * n_features * model->class_num);
+	}
+	else {
 		model->w = (double *) palloc0(sizeof(double) * n_features);
+		model->current_batch_gradient = (double *) palloc0(sizeof(double) * n_features);
+	}
 	//memset(model->w, 0, sizeof(double) * n_features);
 
-	model->current_batch_num = 0;
-	model->current_batch_gradient = (double *) palloc0(sizeof(double) * n_features);
+	
+	
 
 	// for mini-batch on sparse data
 	// model->w_old = (double *) palloc0(sizeof(double) * n_features);
@@ -1042,24 +1055,25 @@ compute_dense_tuple_gradient_Softmax(SortTuple* tp, Model* model)
 inline void
 batch_compute_dense_tuple_gradient_Softmax(SortTuple* tp, Model* model)
 {
-    int y = tp->class_label; // 0， 1， 2， 3 (from 0), here K = 4
-    double* x = tp->features_v; 
-
-    int n = model->n_features;
+	int n = model->n_features;
 	int K = model->class_num;
-
 
 	if (tp == NULL) {
 		if (model->current_batch_num > 0) {
 			int j;
 			for (j = 0; j < K; j++) 
-				softmax_add_and_scale(model->w, j, n, model->current_batch_gradient, 1.0 / model->current_batch_num, K);	
+				batch_softmax_add_and_scale(model->w, n, model->current_batch_gradient, 1.0 / model->current_batch_num, K);	
 		}
 			
-		memset(model->current_batch_gradient, 0, sizeof(double) * n);
+		memset(model->current_batch_gradient, 0, sizeof(double) * n * K);
         model->current_batch_num = 0;
 		return;
 	}
+
+    int y = tp->class_label; // 0， 1， 2， 3 (from 0), here K = 4
+    double* x = tp->features_v; 
+
+   
 
 	double gradient[K];
 	double sum = 0.0;
@@ -1090,8 +1104,8 @@ batch_compute_dense_tuple_gradient_Softmax(SortTuple* tp, Model* model)
 
     if (model->current_batch_num == model->batch_size) {
 		for (j = 0; j < K; j++) 
-				softmax_add_and_scale(model->w, j, n, model->current_batch_gradient, 1.0 / model->current_batch_num, K);	
-		memset(model->current_batch_gradient, 0, sizeof(double) * n);
+			batch_softmax_add_and_scale(model->w, n, model->current_batch_gradient, 1.0 / model->current_batch_num, K);	
+		memset(model->current_batch_gradient, 0, sizeof(double) * n * K);
         model->current_batch_num = 0;
 	}    
 }

@@ -677,7 +677,7 @@ batch_compute_sparse_tuple_gradient_LR(SortTuple* tp, Model* model)
     model->current_batch_num += 1;
 
     if (model->current_batch_num == model->batch_size) {
-		my_sparse_add_and_scale_dss(model->w, model->current_batch_gradient, model->learning_rate / model->current_batch_num, model);
+		my_sparse_add_and_scale_dss(model->w, model->current_batch_gradient, model->learning_rate / model->batch_size, model);
         model->current_batch_num = 0;
 	} 
 
@@ -885,7 +885,7 @@ batch_compute_sparse_tuple_gradient_SVM(SortTuple* tp, Model* model)
     model->current_batch_num += 1;
 
     if (model->current_batch_num == model->batch_size) {
-		my_sparse_add_and_scale_dss(model->w, model->current_batch_gradient, model->learning_rate / model->current_batch_num, model);
+		my_sparse_add_and_scale_dss(model->w, model->current_batch_gradient, model->learning_rate / model->batch_size, model);
         model->current_batch_num = 0;
 	} 
 
@@ -1104,7 +1104,7 @@ batch_compute_dense_tuple_gradient_Softmax(SortTuple* tp, Model* model)
 
     if (model->current_batch_num == model->batch_size) {
 		for (j = 0; j < K; j++) 
-			batch_softmax_add_and_scale(model->w, n, model->current_batch_gradient, 1.0 / model->current_batch_num, K);	
+			batch_softmax_add_and_scale(model->w, n, model->current_batch_gradient, 1.0 / model->batch_size, K);	
 		memset(model->current_batch_gradient, 0, sizeof(double) * n * K);
         model->current_batch_num = 0;
 	}    

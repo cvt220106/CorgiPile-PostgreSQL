@@ -31,12 +31,12 @@
         {
             "label": "Make Install",
             "type": "shell",
-            "command": "sudo make install"
+            "command": "make install"
         },
         {
             "label": "Make Uninstall",
             "type": "shell",
-            "command": "sudo make uninstall"
+            "command": "make uninstall"
         }
     ]
 }

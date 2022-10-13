@@ -88,7 +88,9 @@ In our current implemention, the source code of the three operators are availabl
 [TupleShuffle operator](src/backend/executor/nodeSort.c) with its [TupleShuffle implementation](src/backend/utils/sort/tuplesort.c), and
 [BlockShuffle operator](src/backend/executor/nodeSeqscan.c) with its [BlockShuffle implementation](src/backend/access/heap/heapam.c).
 
+# Compile, install, and execute CorgiPile
 
+Please refer to [compile-install.md](compile-install.md).
 
 # CorgiPile Performance
 

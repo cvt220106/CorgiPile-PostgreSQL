@@ -503,7 +503,7 @@ static void copytup_heap_original(Tuplesortstate *state, SortTuple *stup, void *
 // corgipile: add begin
 // shuffle_tuple(state->memtuples, state->memtupcount, state);
 
-inline void
+ void
 shuffle_tuple(SortTuple *a, size_t n)
 {
 	srand(time(0) + rand());
@@ -527,7 +527,7 @@ shuffle_tuple(SortTuple *a, size_t n)
 
 }
 
-inline
+
 void shuffle_read_buf_indexes(int* read_buf, int read_buf_count) {
 	srand(time(0) + rand());
 	int i;
@@ -665,7 +665,7 @@ is_shuffle_buffer_emtpy(Tuplesortstate *state) {
 }
 */
 
-inline int 
+ int 
 my_parse_array_no_copy(struct varlena* input, int typesize, char** output) {
 	// elog(WARNING, "Inside loss(), for v, ISEXTERNAL %d, ISCOMPR %d, ISHORT %d, varsize_short %d", VARATT_IS_EXTERNAL(v2) ? 1 : 0, VARATT_IS_COMPRESSED(v2)  ? 1 : 0, VARATT_IS_SHORT(v2)  ? 1 : 0, VARSIZE_SHORT(v2));
 	// elog(WARNING, "Inside loss(), for v, varlena = %x", input);
@@ -685,7 +685,7 @@ my_parse_array_no_copy(struct varlena* input, int typesize, char** output) {
 }
 
 
-inline
+
 void dense_fast_transfer_slot_to_sgd_tuple (
 	Tuplesortstate *state, 
 	TupleTableSlot* slot, 
@@ -744,7 +744,7 @@ void dense_fast_transfer_slot_to_sgd_tuple (
 }
 
 
-inline
+
 void sparse_fast_transfer_slot_to_sgd_tuple (
 	Tuplesortstate *state, 
 	TupleTableSlot* slot, 
@@ -856,7 +856,7 @@ void sparse_fast_transfer_slot_to_sgd_tuple (
 }
 
 /* commit id c6255d6
-inline
+
 void fast_transfer_slot_to_sgd_tuple (
 	Tuplesortstate *state, 
 	TupleTableSlot* slot, 
@@ -1983,9 +1983,9 @@ tupleshufflesort_getheaptuple(Tuplesortstate *state, bool forward, bool *should_
 // 	 ((tup1)->tupindex) - ((tup2)->tupindex) : \
 // 	 COMPARETUP(state, tup1, tup2))
 /*
- * Inline-able copy of FunctionCall2Coll() to save some cycles in sorting.
+ * -able copy of FunctionCall2Coll() to save some cycles in sorting.
  */
-// static inline Datum
+// static  Datum
 // myFunctionCall2Coll(FmgrInfo *flinfo, Oid collation, Datum arg1, Datum arg2)
 // {
 // 	FunctionCallInfoData fcinfo;

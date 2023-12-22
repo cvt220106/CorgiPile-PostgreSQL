@@ -116,7 +116,7 @@ double diff_timeofday_seconds(struct timeval *start, struct timeval *end) {
 // }
 
 // from bismarck
-inline double
+double
 dot(const double* x, const double* y, const int size) {
   double ret = 0.0;
   int i;
@@ -128,7 +128,7 @@ dot(const double* x, const double* y, const int size) {
 
 
 // for softmax regression
-inline double
+double
 softmax_dot(const double* w, const int j, const double* x, const int n, const int K) {
   double ret = 0.0;
   int i;
@@ -140,7 +140,7 @@ softmax_dot(const double* w, const int j, const double* x, const int n, const in
 }
 
 // from bismarck
-inline double
+double
 dot_dss(const double* x, const int* k, const double* v, const int sparseSize) {
   double ret = 0.0;
   int i;
@@ -151,7 +151,7 @@ dot_dss(const double* x, const int* k, const double* v, const int sparseSize) {
 }
 
 // from bismarck
-inline void
+void
 add_and_scale(double* x, const int size, const double* y, const double c) {
   int i;
   for(i = size - 1; i >= 0; i--) {
@@ -160,7 +160,7 @@ add_and_scale(double* x, const int size, const double* y, const double c) {
 }
 
 // for softmax regression
-inline void
+void
 softmax_add_and_scale(double* w, const int j, const int n, const double* x, const double c, const int K) {
   int i;
   for(i = 0; i < n; i++) {
@@ -170,7 +170,7 @@ softmax_add_and_scale(double* w, const int j, const int n, const double* x, cons
   }
 }
 
-inline void
+void
 batch_softmax_add_and_scale(double* w, const int n, const double* batch_w, const double c, const int K) {
   int i;
   for(i = 0; i < n * K; i++) {
@@ -178,7 +178,7 @@ batch_softmax_add_and_scale(double* w, const int n, const double* batch_w, const
   }
 }
 
-inline void
+void
 add_c_dss(double* x, const int* k, const int sparseSize, const double c) {
   int i;
   for(i = sparseSize - 1; i >= 0; i--) {
@@ -187,7 +187,7 @@ add_c_dss(double* x, const int* k, const int sparseSize, const double c) {
 }
 
 // from bismarck
-inline void
+void
 add_and_scale_dss(double* x, const int* k, const double* v, const int sparseSize, const double c) {
   int i;
   for(i = sparseSize - 1; i >= 0; i--) {
@@ -196,7 +196,7 @@ add_and_scale_dss(double* x, const int* k, const double* v, const int sparseSize
 }
 
 // from bismarck
-inline void
+void
 scale_i(double* x, const int size, const double c) {
   int i;
   for(i = size - 1; i >= 0; i --) {
@@ -205,7 +205,7 @@ scale_i(double* x, const int size, const double c) {
 }
 
 // from bismarck
-inline double
+double
 norm(const double *x, const int size) {
   double norm = 0;
   int i;
@@ -216,14 +216,14 @@ norm(const double *x, const int size) {
 }
 
 // from bismarck
-inline double
+double
 sigma(const double v) {
   if (v > 30) { return 1.0 / (1.0 + exp(-v)); }
   else { return exp(v) / (1.0 + exp(v)); }
 }
 
 // from bismarck
-inline void
+void
 l1_shrink_mask(double* x, const double u, const int* k, const int sparseSize) {
   int i;
   for(i = sparseSize-1; i >= 0; i--) {
@@ -233,7 +233,7 @@ l1_shrink_mask(double* x, const double u, const int* k, const int sparseSize) {
   }
 }
 
-inline void
+void
 l2_shrink_mask_d(double* x, const double u, const int size) {
   int i;
   for(i = size-1; i >= 0; i--) {
@@ -243,7 +243,7 @@ l2_shrink_mask_d(double* x, const double u, const int size) {
 }
 
 // from bismarck
-inline void
+void
 l1_shrink_mask_d(double* x, const double u, const int size) {
   int i;
   double xi = 0.0;
@@ -258,13 +258,13 @@ l1_shrink_mask_d(double* x, const double u, const int size) {
 
 
 // from bismarck
-inline double
+double
 log_sum(const double a, const double b) {
 	return a + log(1.0 + exp(b - a));
 }
 
 
-inline void
+void
 my_sparse_add_and_scale_dss(double* w, double* current_batch_gradient, const double c, Model *model) {
   // e.g., model->feature_k_non_zeros = [1, 2, 3; 2, 3, 4; 1, 4, 6], model->feature_k_index = 9
   int i;
@@ -447,7 +447,7 @@ static void free_TestState(TestState* test_state) {
 }
 */
 
-inline void
+void
 compute_dense_tuple_gradient_LR(SortTuple* tp, Model* model)
 {
     int y = tp->class_label;
@@ -469,7 +469,7 @@ compute_dense_tuple_gradient_LR(SortTuple* tp, Model* model)
 }
 
 
-inline void
+void
 batch_compute_dense_tuple_gradient_LR(SortTuple* tp, Model* model)
 {
 	int n = model->n_features;
@@ -509,7 +509,7 @@ batch_compute_dense_tuple_gradient_LR(SortTuple* tp, Model* model)
 }
 
 /*
-inline void
+void
 batch_compute_dense_tuple_gradient_LR(SortTuple* tp, Model* model)
 {
 	int n = model->n_features;
@@ -547,7 +547,7 @@ batch_compute_dense_tuple_gradient_LR(SortTuple* tp, Model* model)
 }
 */
 
-inline void
+void
 compute_sparse_tuple_gradient_LR(SortTuple* tp, Model* model)
 {
     int y = tp->class_label;
@@ -567,7 +567,7 @@ compute_sparse_tuple_gradient_LR(SortTuple* tp, Model* model)
 }
 
 /*
-inline void
+void
 batch_compute_sparse_tuple_gradient_LR(SortTuple* tp, Model* model)
 {
     int n = model->n_features;
@@ -605,7 +605,7 @@ batch_compute_sparse_tuple_gradient_LR(SortTuple* tp, Model* model)
 }
 */
 /*
-inline void
+void
 batch_compute_sparse_tuple_gradient_LR(SortTuple* tp, Model* model)
 {
 	int n = model->n_features;
@@ -643,7 +643,7 @@ batch_compute_sparse_tuple_gradient_LR(SortTuple* tp, Model* model)
     l1_shrink_mask(w, u, k, k_len);
 }
 */
-inline void
+void
 batch_compute_sparse_tuple_gradient_LR(SortTuple* tp, Model* model)
 {
 	int n = model->n_features;
@@ -687,7 +687,7 @@ batch_compute_sparse_tuple_gradient_LR(SortTuple* tp, Model* model)
 }
 
 
-inline void
+void
 compute_dense_tuple_loss_LR(SortTuple* tp, Model* model)
 {
 	// double* x = tp->features_v;
@@ -713,7 +713,7 @@ compute_dense_tuple_loss_LR(SortTuple* tp, Model* model)
 }
 
 
-inline void
+void
 compute_sparse_tuple_loss_LR(SortTuple* tp, Model* model)
 {
 	int y = tp->class_label;
@@ -737,7 +737,7 @@ compute_sparse_tuple_loss_LR(SortTuple* tp, Model* model)
 
 
 
-inline void
+void
 compute_dense_tuple_gradient_SVM(SortTuple* tp, Model* model)
 {
     int y = tp->class_label;
@@ -756,7 +756,7 @@ compute_dense_tuple_gradient_SVM(SortTuple* tp, Model* model)
 }
 
 /*
-inline void
+void
 batch_compute_dense_tuple_gradient_SVM(SortTuple* tp, Model* model)
 {
 	int n = model->n_features;
@@ -792,7 +792,7 @@ batch_compute_dense_tuple_gradient_SVM(SortTuple* tp, Model* model)
 }
 */
 
-inline void
+void
 batch_compute_dense_tuple_gradient_SVM(SortTuple* tp, Model* model)
 {
 	int n = model->n_features;
@@ -829,7 +829,7 @@ batch_compute_dense_tuple_gradient_SVM(SortTuple* tp, Model* model)
 }
 
 
-inline void
+void
 compute_sparse_tuple_gradient_SVM(SortTuple* tp, Model* model)
 {
     int y = tp->class_label;
@@ -850,7 +850,7 @@ compute_sparse_tuple_gradient_SVM(SortTuple* tp, Model* model)
 }
 
 
-inline void
+void
 batch_compute_sparse_tuple_gradient_SVM(SortTuple* tp, Model* model)
 {
 
@@ -895,7 +895,7 @@ batch_compute_sparse_tuple_gradient_SVM(SortTuple* tp, Model* model)
 }
 
 /*
-inline void
+void
 batch_compute_sparse_tuple_gradient_SVM(SortTuple* tp, Model* model)
 {
 
@@ -936,7 +936,7 @@ batch_compute_sparse_tuple_gradient_SVM(SortTuple* tp, Model* model)
 */
 
 /*
-inline void
+void
 batch_compute_sparse_tuple_gradient_SVM(SortTuple* tp, Model* model)
 {
 
@@ -975,7 +975,7 @@ batch_compute_sparse_tuple_gradient_SVM(SortTuple* tp, Model* model)
 }
 */
 
-inline void
+void
 compute_dense_tuple_loss_SVM(SortTuple* tp, Model* model)
 {
 	int y = tp->class_label;
@@ -993,7 +993,7 @@ compute_dense_tuple_loss_SVM(SortTuple* tp, Model* model)
 	}
 }
 
-inline void
+void
 compute_sparse_tuple_loss_SVM(SortTuple* tp, Model* model)
 {
 	int y = tp->class_label;
@@ -1014,7 +1014,7 @@ compute_sparse_tuple_loss_SVM(SortTuple* tp, Model* model)
 
 // for softmax regression
 
-inline void
+void
 compute_dense_tuple_gradient_Softmax(SortTuple* tp, Model* model)
 {
     int y = tp->class_label; // 0， 1， 2， 3 (from 0), here K = 4
@@ -1052,7 +1052,7 @@ compute_dense_tuple_gradient_Softmax(SortTuple* tp, Model* model)
 
   
 
-inline void
+void
 batch_compute_dense_tuple_gradient_Softmax(SortTuple* tp, Model* model)
 {
 	int n = model->n_features;
@@ -1111,7 +1111,7 @@ batch_compute_dense_tuple_gradient_Softmax(SortTuple* tp, Model* model)
 }
 
 
-inline void
+void
 compute_dense_tuple_loss_Softmax(SortTuple* tp, Model* model)
 {
 	// double* x = tp->features_v;
@@ -1506,7 +1506,7 @@ transfer_slot_to_sgd_tuple(
 // 	sgd_tuple->class_label = slot->label;
 // }
 
-inline void
+void
 fast_transfer_slot_to_sgd_tuple (
 	TupleTableSlot* slot, 
 	SortTuple* sgd_tuple) {

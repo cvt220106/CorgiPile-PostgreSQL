@@ -11,7 +11,7 @@
 		{
 			"label": "Configure",
 			"type": "shell",
-			"command": "./configure --prefix=/home/jacky/postgres-sgd --enable-depend --enable-cassert --enable-debug --with-python CFLAGS='-O3 -Wall -lpthread'",
+			"command": "./configure --prefix=/home/jacky/Documents/postgres-sgd --enable-depend --enable-cassert --enable-debug --with-python CFLAGS='-O3 -Wall -lpthread'",
 			"problemMatcher": [
 				"$eslint-compact"
 			]

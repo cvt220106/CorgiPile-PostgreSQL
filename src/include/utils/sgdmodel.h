@@ -20,6 +20,7 @@
 #define DEFAULT_IO_BIG_BLOCK_SIZE  800 // 1 page = 8K, default 10 pages
 #define DEFAULT_BUFFER_SIZE  800 // default 100 pages = 800KB
 #define DEFAULT_BUFFER_BLOCK_NUM 1.0
+#define DEFAULT_ALGO_NAME "sgd"
 
 
 
@@ -47,6 +48,14 @@ typedef struct Model {
 	// double* w_old;
 	int* feature_k_non_zeros;
 	int feature_k_index;
+
+	// for Adagrad alogrithm, add a grad cache
+	double* adagrad;
+
+	// confusion matrix
+	double tp; // true positive, calculate f1-score
+	double fn; // false negetive, predict 0 but real is 1, calculate recall
+	double fp; // false positive, predict 1 but real is 0, calculate precision
 
 } Model;
 
@@ -115,6 +124,8 @@ extern int set_tuple_shuffle;
 extern SGDTupleDesc* sgd_tupledesc;
 
 extern bool is_training;
+
+extern char* set_algo_name;
 
 
 

@@ -25,6 +25,8 @@ lcov.info
 win32ver.rc
 *.exe
 lib*dll.def
+/.idea/
+/.gdbinit
 
 # Local excludes in root directory
 /GNUmakefile
@@ -35,3 +37,4 @@ lib*dll.def
 /pgsql.sln.cache
 /Debug/
 /Release/
+

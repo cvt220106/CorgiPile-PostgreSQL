@@ -342,7 +342,6 @@ Exec_Unbuffered_Sort(SortState *node) {
     return ExecProcNode(outerNode);
 }
 
-inline
 TupleTableSlot *
 Exec_Double_Buffered_Sort(SortState *node)
 {

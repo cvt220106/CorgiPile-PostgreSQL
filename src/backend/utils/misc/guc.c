@@ -675,7 +675,7 @@ static struct config_bool ConfigureNamesBool[] =
 			NULL
 		},
 		&set_run_test,
-		true,
+		false,
 		NULL, NULL, NULL
 	},
 	{
@@ -2711,6 +2711,16 @@ static struct config_string ConfigureNamesString[] =
 		},
 		&set_table_name,
 		DEFAULT_TABLE_NAME,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"algo_name", PGC_USERSET, DB_ML,
+			gettext_noop("Sets the algo name (e.g., sgd, ada)."),
+			NULL
+		},
+		&set_algo_name,
+		DEFAULT_ALGO_NAME,
 		NULL, NULL, NULL
 	},
 	// added end

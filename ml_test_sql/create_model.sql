@@ -1,0 +1,1 @@
+CREATE MODEL LR USING ada FROM epsilon_train WITH block_shuffle = 1,tuple_shuffle = 2,block_page_num = 1280,buffer_tuple_num = 300000,iter_num = 20,learning_rate = 0.001,mu = 0,batch_size = 1;

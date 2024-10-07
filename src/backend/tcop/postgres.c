@@ -74,6 +74,7 @@
 #include "utils/snapmgr.h"
 #include "utils/timestamp.h"
 #include "mb/pg_wchar.h"
+#include "utils/sgdmodel.h"
 
 
 extern char *optarg;
@@ -902,6 +903,82 @@ exec_simple_query(const char *query_string)
 	 * Do basic parsing of the query or queries (this should be safe even if
 	 * we are in aborted transaction state!)
 	 */
+
+	// add the create model statement pre-process
+	char* query_copy = strdup(query_string); // 创建查询字符串的副本，因为strtok会修改原始字符串
+	int len = strlen(query_copy);
+	if (query_copy[len - 1] == ';')
+	{
+		query_copy[len - 1] = '\0';
+	}
+	char* token = strtok(query_copy, " "); // 使用空格作为分隔符
+	char *new_string = (char *)malloc(sizeof(char) * 256);
+	memset(new_string, 0, 256);
+
+	while (token != NULL)
+	{
+		if (strcmp(token, "MODEL") == 0)
+		{
+			token = strtok(NULL, " ");
+			set_model_name = strdup(token);
+		}
+		else if (strcmp(token, "USING") == 0)
+		{
+			token = strtok(NULL, " ");
+			set_algo_name = strdup(token);
+		}
+		else if (strcmp(token, "FROM") == 0)
+		{
+			token = strtok(NULL, " ");
+			set_table_name = strdup(token);
+			sprintf(new_string, "select * from %s order by did limit 10", set_table_name);
+			query_string = new_string;
+		}
+		else if (strcmp(token, "WITH") == 0)
+		{
+			token = strtok(NULL, ",");
+			while (token != NULL)
+			{
+				if (strstr(token, "block_shuffle") != NULL)
+				{
+					sscanf(token, "block_shuffle = %d", &set_block_shuffle);
+				}
+				else if (strstr(token, "tuple_shuffle") != NULL)
+				{
+					sscanf(token, "tuple_shuffle = %d", &set_tuple_shuffle);
+				}
+				else if (strstr(token, "block_page_num") != NULL)
+				{
+					sscanf(token, "block_page_num = %d", &set_block_page_num);
+				}
+				else if (strstr(token, "buffer_tuple_num") != NULL)
+				{
+					sscanf(token, "buffer_tuple_num = %d", &set_buffer_tuple_num);
+				}
+				else if (strstr(token, "iter_num") != NULL)
+				{
+					sscanf(token, "iter_num = %d", &set_iter_num);
+				}
+				else if (strstr(token, "learning_rate") != NULL)
+				{
+					sscanf(token, "learning_rate = %lf", &set_learning_rate);
+				}
+				else if (strstr(token, "mu") != NULL)
+				{
+					sscanf(token, "mu = %lf", &set_mu);
+				}
+				else if (strstr(token, "batch_size") != NULL)
+				{
+					sscanf(token, "batch_size = %d", &set_batch_size);
+				}
+				token = strtok(NULL, ",");
+			}
+		}
+		token = strtok(NULL, " ");
+	}
+
+	free(query_copy);
+
 	parsetree_list = pg_parse_query(query_string);
 
 	/* Log immediately if dictated by log_statement */
@@ -1155,6 +1232,7 @@ exec_simple_query(const char *query_string)
 	TRACE_POSTGRESQL_QUERY_DONE(query_string);
 
 	debug_query_string = NULL;
+	free(new_string);
 }
 
 /*

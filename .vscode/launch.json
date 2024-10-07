@@ -8,10 +8,10 @@
             "name": "(lldb) pg Launch",
             "type": "cppdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/src/backend/postgres",
+            "program": "/home/jacky/Documents/postgres-sgd/bin/postgres",
             "args": [
                 "-D",
-                "/datadisk/data/pg9data"
+                "/home/jacky/Documents/postgres-9_2/pg9data"
             ],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
@@ -54,7 +54,7 @@
             "name": "C++ Attach",
             "type": "cppdbg",
             "request": "attach",
-            "program": "${workspaceFolder}/src/backend/postgres",
+            "program": "/home/jacky/Documents/postgres-sgd/bin/postgres",
             "processId": "${command:pickProcess}",
             "linux": {
                 "MIMode": "gdb"
